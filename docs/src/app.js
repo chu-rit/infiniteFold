@@ -244,12 +244,27 @@ function handleDragMove(x, y) {
 function handleTouchEnd(e) {
   if (!isDragging) return;
   isDragging = false;
-  // changedTouches 사용 (손가락을 뗀 터치만)
-  const touch = e.changedTouches[0];
-  if (touch) {
-    // iOS Safari에서는 50ms 후에 실행 (이벤트 루프 완료 후)
-    setTimeout(() => handleDragEnd(), 50);
+  
+  // 직접 폴드 실행 (handleDragEnd 우회)
+  const direction = getDirectionFromOffset(currentTranslateX, currentTranslateY);
+  const depth = getDepthFromOffset(currentTranslateX, currentTranslateY, startPosition.x, startPosition.y);
+  
+  if (direction && depth && depth !== 'cancel') {
+    const previewResult = getFoldPreview(board, direction, depth);
+    if (previewResult.valid && !previewResult.isEmpty) {
+      // 폴드 실행
+      handleFold(direction, depth);
+    }
   }
+  
+  // 상태 초기화
+  activeDirection = null;
+  activeDepth = null;
+  isCancelled = false;
+  preview = { valid: true, ghosts: [], mismatches: [] };
+  currentTranslateX = 0;
+  currentTranslateY = 0;
+  render();
 }
 
 function handleMouseUp(e) {

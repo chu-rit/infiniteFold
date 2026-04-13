@@ -135,7 +135,7 @@
       background-color: #bbada0;
       border-radius: 12px;
       overflow: hidden;
-      touch-action: none;
+      touch-action: pan-x pan-y;
       -webkit-touch-callout: none;
       -webkit-user-select: none;
       -moz-user-select: none;
@@ -144,6 +144,7 @@
       -webkit-tap-highlight-color: transparent;
       cursor: pointer;
       pointer-events: auto;
+      transform: translateZ(0);
     }
     
     .board-content {
