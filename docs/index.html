@@ -143,6 +143,7 @@
       user-select: none;
       -webkit-tap-highlight-color: transparent;
       cursor: pointer;
+      pointer-events: auto;
     }
     
     .board-content {
@@ -183,6 +184,10 @@
       font-weight: bold;
       transition: transform 0.15s ease;
       box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+      pointer-events: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
     }
     
     .tile.mismatch {

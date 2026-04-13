@@ -152,29 +152,15 @@ function getDepthFromOffset(dx, dy, startX, startY) {
 }
 
 function setupEventListeners() {
-  // iOS Safari를 위해 capture phase 사용
-  document.addEventListener('touchstart', handleTouchStart, { passive: false, capture: true });
-  document.addEventListener('touchmove', handleTouchMove, { passive: false, capture: true });
-  document.addEventListener('touchend', handleTouchEnd, { passive: false, capture: true });
-  document.addEventListener('touchcancel', handleTouchEnd, { passive: false, capture: true });
-  // iOS에서 클릭 이벤트도 처리 (터치 백업)
-  document.addEventListener('click', preventClick, { capture: true });
+  // iOS Safari - capture 없이 버블링 단계에서 처리
+  document.addEventListener('touchstart', handleTouchStart, { passive: false });
+  document.addEventListener('touchmove', handleTouchMove, { passive: false });
+  document.addEventListener('touchend', handleTouchEnd, { passive: false });
+  document.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+  // 마우스 이벤트는 데스크톱용
   document.addEventListener('mousedown', handleMouseDown);
   document.addEventListener('mousemove', handleMouseMove);
   document.addEventListener('mouseup', handleMouseUp);
-}
-
-let lastTouchTime = 0;
-function preventClick(e) {
-  // 게임오버 버튼이나 재도전 버튼 클릭은 허용
-  if (e.target.closest('.close-button') || e.target.closest('.retry-bar')) {
-    return;
-  }
-  // 터치 후 300ms 내의 클릭은 무시 (iOS ghost click 방지)
-  if (Date.now() - lastTouchTime < 300) {
-    e.preventDefault();
-    e.stopPropagation();
-  }
 }
 
 function handleTouchStart(e) {
@@ -258,12 +244,11 @@ function handleDragMove(x, y) {
 function handleTouchEnd(e) {
   if (!isDragging) return;
   isDragging = false;
-  lastTouchTime = Date.now();
   // changedTouches 사용 (손가락을 뗀 터치만)
   const touch = e.changedTouches[0];
   if (touch) {
-    // iOS Safari에서는 다음 tick에서 실행
-    requestAnimationFrame(() => handleDragEnd());
+    // iOS Safari에서는 50ms 후에 실행 (이벤트 루프 완료 후)
+    setTimeout(() => handleDragEnd(), 50);
   }
 }
 
