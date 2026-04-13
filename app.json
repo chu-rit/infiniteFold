@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Infinite Fold",
+    "slug": "infinite-fold",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.infinitefold.app"
+    },
+    "android": {
+      "package": "com.infinitefold.app"
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}

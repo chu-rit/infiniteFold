@@ -1,0 +1,118 @@
+[Project: Infinite Fold] - 4x4 Logic Game
+1. Game Overview
+Concept: A puzzle game where players fold a 4x4 grid to merge identical numbers based on symmetry.
+
+Goal: Merge numbers to reach higher values without getting "Deadlocked" (no more possible moves).
+
+2. Core Mechanics: Folding (The "Fold" Action)
+The player can fold the board from any of the 4 edges (Top, Bottom, Left, Right).
+
+Partial Fold (1-Row): Folds only the outermost row/column onto the next one.
+
+Example (Top to Bottom): Row 0 folds onto Row 1. (Rows 2, 3 remain still).
+
+Full Fold (2-Row / Half): Folds the board exactly in half.
+
+Example (Top to Bottom): Row 0 folds onto Row 3, Row 1 folds onto Row 2.
+
+3. Logic Rules (Critical for AI)
+When a fold is attempted, the system must check the "Target Cell" for every "Source Cell":
+
+Merge: If Source == Target, they merge into Source * 2.
+
+Move: If Target == 0 (Empty), the Source value moves to the Target.
+
+Block (Mismatch): If Source != Target and Target != 0, the entire fold is invalid.
+
+Execution: A fold only executes if all moving cells meet the Merge or Move conditions.
+
+4. Game Loop & Spawning
+Trigger: A new number spawns only if the fold resulted in zero merges.
+
+Combo Reward: If at least one pair was merged, skip spawning a new number for that turn.
+
+Dynamic Balancing:
+
+High Space: Spawn numbers that don't exist on the board to increase difficulty.
+
+Low Space (< 3 cells): Spawn the most frequent number on the board to help the player.
+
+5. UI/UX Requirements
+Interaction: Input via swipe. Swipe distance determines Fold Depth (Short = 1-Row, Long = 2-Row).
+
+Real-time Preview: Show ghost numbers on Target Cells during the swipe/drag.
+
+Visual Feedback:
+
+Show merged results in a semi-transparent state.
+
+If a fold is blocked by a Mismatch, highlight the offending cells in Red.
+
+6. Technical Implementation Roadmap
+Data Structure: 4x4 2D Array (Integer).
+
+Symmetry Function: Create a function getSymmetricIndex(index, foldDepth) to calculate target coordinates.
+
+Validation: A canFold(direction, depth) function to check for Mismatches before updating the state.
+
+GameOver: Check every possible move (4 directions * 2 depths = 8 total options). If all return false, Game Over.
+
+// korean
+
+1. 게임 개요
+컨셉: 4x4 그리드에서 종이를 접듯 판을 접어, 대칭 위치에 있는 동일한 숫자를 합치는 퍼즐 게임.
+
+목표: 숫자를 계속 합쳐서 높은 숫자를 만들고, 모든 경우의 수가 차단되는 '데드락(Deadlock)' 상태를 피하며 생존하는 것.
+
+2. 핵심 메커니즘: 접기 (Folding)
+플레이어는 보드의 4개 가장자리(상, 하, 좌, 우) 중 하나를 선택해 안쪽으로 접을 수 있습니다.
+
+부분 접기 (1칸 접기): 가장 바깥쪽의 1개 행(또는 열)만 바로 안쪽으로 접습니다.
+
+예시 (위에서 아래로): 0행을 1행 위로 접음 (2, 3행은 고정).
+
+전체 접기 (2칸/절반 접기): 보드 전체를 정확히 반으로 접습니다.
+
+예시 (위에서 아래로): 0행은 3행으로, 1행은 2행으로 겹쳐짐.
+
+3. 로직 규칙 (AI 구현 핵심)
+접기를 시도할 때, 시스템은 이동하는 모든 '시작점(Source)'과 '도착점(Target)'의 관계를 검사해야 합니다.
+
+합치기 (Merge): 시작점 숫자 == 도착점 숫자라면, 숫자 * 2로 합쳐짐.
+
+이동 (Move): 도착점이 빈칸(0)이라면, 시작점 숫자가 해당 칸으로 이동.
+
+차단 (Mismatch): 시작점 != 도착점이고 도착점이 빈칸이 아니라면, 해당 방향의 접기 동작은 전체 취소.
+
+실행 조건: 접으려는 범위 내의 모든 블록이 '합치기' 또는 '이동'이 가능할 때만 최종 실행됩니다.
+
+4. 게임 루프 및 블록 생성
+블록 생성 조건: 접기를 실행했는데 숫자가 단 하나도 합쳐지지 않았을 때만 새로운 숫자가 생성됩니다.
+
+콤보 보상: 하나 이상의 쌍이 합쳐졌다면, 이번 턴에는 새로운 숫자가 생성되지 않습니다 (공간 확보 보너스).
+
+다이내믹 밸런스:
+
+여유 있을 때: 판에 없는 숫자를 일부러 생성해 난이도 조절.
+
+위기 상황 (빈칸 < 3개): 현재 판에서 가장 많이 깔린 숫자를 생성해 탈출 기회 제공.
+
+5. UI/UX 및 인터랙션
+조작: 스와이프 거리로 접기 깊이 결정 (짧게 밀면 1칸, 길게 밀면 2칸).
+
+실시간 미리보기: 드래그 중인 상태에서 합쳐질 결과를 도착점 위에 반투명(Ghost)하게 표시.
+
+시각적 피드백:
+
+숫자가 불일치해 접기가 불가능한 블록은 **빨간색(Red)**으로 강조.
+
+합치기 성공 시 숫자 팝업 애니메이션.
+
+6. 기술 구현 로드맵
+데이터 구조: int[4][4] 2차원 배열.
+
+대칭 함수: getSymmetricIndex(index, depth) 함수를 통해 접는 선 기준 대칭 좌표 계산.
+
+검증: canFold(direction, depth) 함수로 실제 배열을 건드리기 전 유효성 판단.
+
+게임 오버: 상/하/좌/우 각각 1칸/2칸 접기(총 8가지 경우)가 모두 불가능하면 종료.
