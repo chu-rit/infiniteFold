@@ -152,13 +152,25 @@ function getDepthFromOffset(dx, dy, startX, startY) {
 }
 
 function setupEventListeners() {
-  document.addEventListener('touchstart', handleTouchStart, { passive: false });
-  document.addEventListener('touchmove', handleTouchMove, { passive: false });
-  document.addEventListener('touchend', handleTouchEnd, { passive: false });
-  document.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+  // iOS Safari를 위해 capture phase 사용
+  document.addEventListener('touchstart', handleTouchStart, { passive: false, capture: true });
+  document.addEventListener('touchmove', handleTouchMove, { passive: false, capture: true });
+  document.addEventListener('touchend', handleTouchEnd, { passive: false, capture: true });
+  document.addEventListener('touchcancel', handleTouchEnd, { passive: false, capture: true });
+  // iOS에서 클릭 이벤트도 처리 (터치 백업)
+  document.addEventListener('click', preventClick, { capture: true });
   document.addEventListener('mousedown', handleMouseDown);
   document.addEventListener('mousemove', handleMouseMove);
   document.addEventListener('mouseup', handleMouseUp);
+}
+
+let lastTouchTime = 0;
+function preventClick(e) {
+  // 터치 후 500ms 내의 클릭은 무시 (iOS ghost click 방지)
+  if (Date.now() - lastTouchTime < 500) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
 }
 
 function handleTouchStart(e) {
@@ -241,12 +253,13 @@ function handleDragMove(x, y) {
 
 function handleTouchEnd(e) {
   if (!isDragging) return;
-  e.preventDefault();
+  // iOS에서 touchend의 preventDefault는 제거 (클릭 이벤트 차단 문제)
   isDragging = false;
   // changedTouches 사용 (손가락을 뗀 터치만)
   const touch = e.changedTouches[0];
   if (touch) {
-    handleDragEnd();
+    // iOS에서 즉시 실행을 위해 setTimeout 사용
+    setTimeout(() => handleDragEnd(), 0);
   }
 }
 
@@ -257,8 +270,13 @@ function handleMouseUp(e) {
 }
 
 function handleDragEnd() {
+  console.log('handleDragEnd called');
+  console.log('currentTranslate:', currentTranslateX, currentTranslateY);
+  console.log('startPosition:', startPosition.x, startPosition.y);
+  
   // 취소된 경우
   if (isCancelled) {
+    console.log('cancelled - resetting');
     activeDirection = null;
     activeDepth = null;
     isCancelled = false;
@@ -273,8 +291,11 @@ function handleDragEnd() {
   const direction = getDirectionFromOffset(currentTranslateX, currentTranslateY);
   const depth = getDepthFromOffset(currentTranslateX, currentTranslateY, startPosition.x, startPosition.y);
   
+  console.log('direction:', direction, 'depth:', depth);
+  
   // 유효하지 않은 방향/깊이면 무시
   if (!direction || !depth || depth === 'cancel') {
+    console.log('invalid direction/depth - resetting only');
     activeDirection = null;
     activeDepth = null;
     preview = { valid: true, ghosts: [], mismatches: [] };
