@@ -152,15 +152,22 @@ function getDepthFromOffset(dx, dy, startX, startY) {
 }
 
 function setupEventListeners() {
-  // iOS Safari - capture 없이 버블링 단계에서 처리
-  document.addEventListener('touchstart', handleTouchStart, { passive: false });
-  document.addEventListener('touchmove', handleTouchMove, { passive: false });
-  document.addEventListener('touchend', handleTouchEnd, { passive: false });
-  document.addEventListener('touchcancel', handleTouchEnd, { passive: false });
-  // 마우스 이벤트는 데스크톱용
-  document.addEventListener('mousedown', handleMouseDown);
-  document.addEventListener('mousemove', handleMouseMove);
-  document.addEventListener('mouseup', handleMouseUp);
+  // Pointer Events API 사용 (iOS 13+, 더 안정적)
+  if (window.PointerEvent) {
+    document.addEventListener('pointerdown', handlePointerDown, { passive: false });
+    document.addEventListener('pointermove', handlePointerMove, { passive: false });
+    document.addEventListener('pointerup', handlePointerUp, { passive: false });
+    document.addEventListener('pointercancel', handlePointerUp, { passive: false });
+  } else {
+    // Fallback for old browsers
+    document.addEventListener('touchstart', handleTouchStart, { passive: false });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd, { passive: false });
+    document.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }
 }
 
 function handleTouchStart(e) {
@@ -241,23 +248,62 @@ function handleDragMove(x, y) {
   }
 }
 
-function handleTouchEnd(e) {
+// Pointer Events handlers (iOS 13+)
+function handlePointerDown(e) {
+  if (!boardElement) return;
+  const rect = boardElement.getBoundingClientRect();
+  if (e.clientX < rect.left || e.clientX > rect.right ||
+      e.clientY < rect.top || e.clientY > rect.bottom) return;
+  
+  e.preventDefault();
+  startDrag(e.clientX, e.clientY);
+}
+
+function handlePointerMove(e) {
+  if (!isDragging) return;
+  e.preventDefault();
+  handleDragMove(e.clientX, e.clientY);
+}
+
+function handlePointerUp(e) {
   if (!isDragging) return;
   isDragging = false;
+  e.preventDefault();
   
-  // 직접 폴드 실행 (handleDragEnd 우회)
   const direction = getDirectionFromOffset(currentTranslateX, currentTranslateY);
   const depth = getDepthFromOffset(currentTranslateX, currentTranslateY, startPosition.x, startPosition.y);
   
   if (direction && depth && depth !== 'cancel') {
     const previewResult = getFoldPreview(board, direction, depth);
     if (previewResult.valid && !previewResult.isEmpty) {
-      // 폴드 실행
       handleFold(direction, depth);
     }
   }
   
-  // 상태 초기화
+  activeDirection = null;
+  activeDepth = null;
+  isCancelled = false;
+  preview = { valid: true, ghosts: [], mismatches: [] };
+  currentTranslateX = 0;
+  currentTranslateY = 0;
+  render();
+}
+
+// Touch fallback (old iOS)
+function handleTouchEnd(e) {
+  if (!isDragging) return;
+  isDragging = false;
+  
+  const direction = getDirectionFromOffset(currentTranslateX, currentTranslateY);
+  const depth = getDepthFromOffset(currentTranslateX, currentTranslateY, startPosition.x, startPosition.y);
+  
+  if (direction && depth && depth !== 'cancel') {
+    const previewResult = getFoldPreview(board, direction, depth);
+    if (previewResult.valid && !previewResult.isEmpty) {
+      handleFold(direction, depth);
+    }
+  }
+  
   activeDirection = null;
   activeDepth = null;
   isCancelled = false;
