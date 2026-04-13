@@ -155,18 +155,25 @@ function setupEventListeners() {
   document.addEventListener('touchstart', handleTouchStart, { passive: false });
   document.addEventListener('touchmove', handleTouchMove, { passive: false });
   document.addEventListener('touchend', handleTouchEnd, { passive: false });
+  document.addEventListener('touchcancel', handleTouchEnd, { passive: false });
   document.addEventListener('mousedown', handleMouseDown);
   document.addEventListener('mousemove', handleMouseMove);
   document.addEventListener('mouseup', handleMouseUp);
 }
 
 function handleTouchStart(e) {
+  // 보드 요소가 없으면 리턴
+  if (!boardElement) return;
+  // 멀티터치 무시
   if (e.touches.length !== 1) return;
+  
   const touch = e.touches[0];
   const rect = boardElement.getBoundingClientRect();
+  // 보드 영역 내에서만 시작
   if (touch.clientX < rect.left || touch.clientX > rect.right ||
       touch.clientY < rect.top || touch.clientY > rect.bottom) return;
   
+  e.preventDefault();
   startDrag(touch.clientX, touch.clientY);
 }
 
@@ -189,8 +196,11 @@ function startDrag(x, y) {
 
 function handleTouchMove(e) {
   if (!isDragging) return;
-  e.preventDefault();
+  // 첫 번째 터치 포인트 사용
   const touch = e.touches[0];
+  if (!touch) return;
+  
+  e.preventDefault();
   handleDragMove(touch.clientX, touch.clientY);
 }
 
@@ -231,8 +241,13 @@ function handleDragMove(x, y) {
 
 function handleTouchEnd(e) {
   if (!isDragging) return;
+  e.preventDefault();
   isDragging = false;
-  handleDragEnd();
+  // changedTouches 사용 (손가락을 뗀 터치만)
+  const touch = e.changedTouches[0];
+  if (touch) {
+    handleDragEnd();
+  }
 }
 
 function handleMouseUp(e) {
@@ -242,6 +257,7 @@ function handleMouseUp(e) {
 }
 
 function handleDragEnd() {
+  // 취소된 경우
   if (isCancelled) {
     activeDirection = null;
     activeDepth = null;
@@ -253,17 +269,29 @@ function handleDragEnd() {
     return;
   }
   
+  // 드래그 거리가 충분하지 않으면 무시
   const direction = getDirectionFromOffset(currentTranslateX, currentTranslateY);
   const depth = getDepthFromOffset(currentTranslateX, currentTranslateY, startPosition.x, startPosition.y);
   
-  const previewResult = (direction && depth && depth !== 'cancel') 
-    ? getFoldPreview(board, direction, depth)
-    : { valid: false, isEmpty: false };
+  // 유효하지 않은 방향/깊이면 무시
+  if (!direction || !depth || depth === 'cancel') {
+    activeDirection = null;
+    activeDepth = null;
+    preview = { valid: true, ghosts: [], mismatches: [] };
+    currentTranslateX = 0;
+    currentTranslateY = 0;
+    renderBoard();
+    return;
+  }
   
-  if (direction && depth && depth !== 'cancel' && previewResult.valid && !previewResult.isEmpty) {
+  const previewResult = getFoldPreview(board, direction, depth);
+  
+  // 유효한 폴드 실행
+  if (previewResult.valid && !previewResult.isEmpty) {
     handleFold(direction, depth);
   }
   
+  // 상태 초기화
   activeDirection = null;
   activeDepth = null;
   isCancelled = false;
