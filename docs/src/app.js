@@ -166,8 +166,12 @@ function setupEventListeners() {
 
 let lastTouchTime = 0;
 function preventClick(e) {
-  // 터치 후 500ms 내의 클릭은 무시 (iOS ghost click 방지)
-  if (Date.now() - lastTouchTime < 500) {
+  // 게임오버 버튼이나 재도전 버튼 클릭은 허용
+  if (e.target.closest('.close-button') || e.target.closest('.retry-bar')) {
+    return;
+  }
+  // 터치 후 300ms 내의 클릭은 무시 (iOS ghost click 방지)
+  if (Date.now() - lastTouchTime < 300) {
     e.preventDefault();
     e.stopPropagation();
   }
@@ -185,7 +189,7 @@ function handleTouchStart(e) {
   if (touch.clientX < rect.left || touch.clientX > rect.right ||
       touch.clientY < rect.top || touch.clientY > rect.bottom) return;
   
-  e.preventDefault();
+  // iOS Safari에서는 touchstart preventDefault 하지 않음
   startDrag(touch.clientX, touch.clientY);
 }
 
@@ -253,13 +257,13 @@ function handleDragMove(x, y) {
 
 function handleTouchEnd(e) {
   if (!isDragging) return;
-  // iOS에서 touchend의 preventDefault는 제거 (클릭 이벤트 차단 문제)
   isDragging = false;
+  lastTouchTime = Date.now();
   // changedTouches 사용 (손가락을 뗀 터치만)
   const touch = e.changedTouches[0];
   if (touch) {
-    // iOS에서 즉시 실행을 위해 setTimeout 사용
-    setTimeout(() => handleDragEnd(), 0);
+    // iOS Safari에서는 다음 tick에서 실행
+    requestAnimationFrame(() => handleDragEnd());
   }
 }
 
@@ -394,7 +398,7 @@ function render() {
             <div class="game-over-title">DEADLOCKED</div>
             <div class="game-over-message">No more valid moves!</div>
             <div class="game-over-score">Final Score: ${score}</div>
-            <div class="close-button" onclick="window.dismissGameOver()">
+            <div class="close-button" id="closeBtn">
               <div class="close-button-text">✕ CLOSE</div>
             </div>
           </div>
@@ -402,7 +406,7 @@ function render() {
       ` : ''}
 
       ${isGameOver && gameOverDismissed ? `
-        <div class="retry-bar" onclick="window.resetGame()">
+        <div class="retry-bar" id="retryBtn">
           <div class="retry-button-text">🔄 TRY AGAIN</div>
         </div>
       ` : ''}
@@ -414,11 +418,35 @@ function render() {
     </div>
   `;
   
-  window.resetGame = resetGame;
-  window.dismissGameOver = dismissGameOver;
   
   setTimeout(() => {
     renderBoard();
+    
+    // iOS에서 버튼 터치 이벤트 직접 바인딩
+    const closeBtn = document.getElementById('closeBtn');
+    const retryBtn = document.getElementById('retryBtn');
+    
+    if (closeBtn) {
+      closeBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        dismissGameOver();
+      }, { passive: false });
+      closeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        dismissGameOver();
+      });
+    }
+    
+    if (retryBtn) {
+      retryBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        resetGame();
+      }, { passive: false });
+      retryBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        resetGame();
+      });
+    }
   }, 0);
 }
 
