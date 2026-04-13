@@ -1,10 +1,52 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, Dimensions, SafeAreaView, StatusBar, Platform } from 'react-native';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withSpring, 
+  withSequence, 
+  withTiming, 
+  withDelay, 
+  runOnJS,
+  interpolate,
+  Extrapolate
+} from 'react-native-reanimated';
 import { GameBoard } from '../components/GameBoard';
 import { initializeBoard, checkGameOver, spawnNewNumber, executeFold } from '../utils/gameLogic';
 
 const { width, height } = Dimensions.get('window');
 const BOARD_SIZE = Math.min(width * 0.92, 380);
+
+// Flashy Particle Component
+const ComboParticle = ({ index, color }) => {
+  const progress = useSharedValue(0);
+  const angle = (index * 45) * (Math.PI / 180);
+  const distance = 80 + Math.random() * 40;
+  
+  useEffect(() => {
+    progress.value = withTiming(1, { duration: 600 });
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    const x = Math.cos(angle) * distance * progress.value;
+    const y = Math.sin(angle) * distance * progress.value;
+    return {
+      position: 'absolute',
+      width: 8,
+      height: 8,
+      backgroundColor: color,
+      borderRadius: 4,
+      opacity: 1 - progress.value,
+      transform: [
+        { translateX: x },
+        { translateY: y },
+        { scale: 1 - progress.value * 0.5 },
+      ],
+    };
+  });
+
+  return <Animated.View style={animatedStyle} />;
+};
 
 export default function GameScreen() {
   const [board, setBoard] = useState(() => initializeBoard());
@@ -13,6 +55,12 @@ export default function GameScreen() {
   const [isGameOver, setIsGameOver] = useState(false);
   const [gameOverDismissed, setGameOverDismissed] = useState(false);
   const [comboCount, setComboCount] = useState(0);
+  
+  // Reanimated values
+  const comboScale = useSharedValue(0);
+  const comboOpacity = useSharedValue(0);
+  const [particles, setParticles] = useState([]);
+  const particleIdCounter = useRef(0);
 
   const resetGame = useCallback(() => {
     setBoard(initializeBoard());
@@ -38,6 +86,48 @@ export default function GameScreen() {
     }
   }, []);
 
+  // Combo effect - animated show/hide when combo changes
+  useEffect(() => {
+    if (comboCount > 1) {
+      // Trigger Burst Animation
+      comboScale.value = 0;
+      comboOpacity.value = 1;
+      
+      comboScale.value = withSequence(
+        withSpring(1.2, { damping: 10, stiffness: 100 }),
+        withSpring(1.0, { damping: 15, stiffness: 100 })
+      );
+
+      // Spawn particles
+      const newParticles = Array.from({ length: 8 }).map((_, i) => ({
+        id: ++particleIdCounter.current,
+        color: comboCount >= 3 ? '#e74c3c' : '#f67c5f'
+      }));
+      setParticles(prev => [...prev, ...newParticles]);
+
+      // Fade out after delay
+      comboOpacity.value = withDelay(800, withTiming(0, { duration: 300 }));
+      
+      // Cleanup particles after animation
+      const timer = setTimeout(() => {
+        setParticles(prev => prev.filter(p => !newParticles.find(np => np.id === p.id)));
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    } else {
+      comboOpacity.value = 0;
+      comboScale.value = 0;
+    }
+  }, [comboCount]);
+
+  const comboAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: comboOpacity.value,
+    transform: [
+      { scale: comboScale.value },
+      { rotateZ: `${interpolate(comboScale.value, [0, 1], [-10, 0])}deg` }
+    ],
+  }));
+
   const handleFold = useCallback((direction, depth) => {
     const result = executeFold(board, direction, depth);
     
@@ -60,7 +150,10 @@ export default function GameScreen() {
       newCombo = 0;
       setComboCount(0);
     }
-    newBoard = spawnNewNumber(newBoard);
+    // 3콤보 이상일 때는 블록 생성 안 함
+    if (newCombo < 3) {
+      newBoard = spawnNewNumber(newBoard, result.preMergeValues);
+    }
 
     const newScore = score + result.points;
     setScore(newScore);
@@ -100,9 +193,25 @@ export default function GameScreen() {
         </View>
       </View>
 
-      {/* Combo Indicator - absolute positioned to prevent layout shift */}
-      <View style={[styles.comboBar, comboCount === 0 && styles.comboBarHidden]}>
-        <Text style={styles.comboText}>🔥 COMBO ×{comboCount > 0 ? comboCount : 1}</Text>
+      {/* Flashy Combo Burst Overlay */}
+      <View style={styles.comboOverlayContainer} pointerEvents="none">
+        {particles.map(p => (
+          <ComboParticle key={p.id} index={p.id % 8} color={p.color} />
+        ))}
+        <Animated.View style={[
+          styles.comboBurst,
+          comboCount >= 3 && styles.comboBurstSpecial,
+          comboAnimatedStyle
+        ]}>
+          <Text style={styles.comboBurstLabel}>COMBO</Text>
+          <View style={styles.comboNumberRow}>
+            <Text style={styles.comboBurstX}>×</Text>
+            <Text style={[
+              styles.comboBurstNumber,
+              comboCount >= 3 && styles.comboBurstNumberSpecial
+            ]}>{comboCount}</Text>
+          </View>
+        </Animated.View>
       </View>
 
       {/* Game Board */}
@@ -205,26 +314,61 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
   },
-  comboBar: {
-    backgroundColor: '#f67c5f',
-    marginHorizontal: 16,
-    marginBottom: 8,
-    paddingVertical: 6,
-    borderRadius: 20,
-    alignItems: 'center',
+  comboOverlayContainer: {
     position: 'absolute',
-    top: 120, // Fixed position below score header
-    left: 16,
-    right: 16,
-    zIndex: 10,
+    top: height * 0.35,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 100,
   },
-  comboBarHidden: {
-    opacity: 0,
+  comboBurst: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  comboText: {
+  comboBurstSpecial: {
+  },
+  comboBurstLabel: {
     color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: 4,
+    textTransform: 'uppercase',
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 4,
+  },
+  comboNumberRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginTop: -10,
+  },
+  comboBurstX: {
+    color: '#fff',
+    fontSize: 40,
+    fontWeight: '900',
+    marginBottom: 8,
+    marginRight: 4,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 4,
+  },
+  comboBurstNumber: {
+    color: '#fff',
+    fontSize: 80,
+    fontWeight: '900',
+    lineHeight: 88,
+    fontStyle: 'italic',
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 4, height: 4 },
+    textShadowRadius: 6,
+  },
+  comboBurstNumberSpecial: {
+    color: '#ffeb3b',
+    fontSize: 100,
+    lineHeight: 110,
+    textShadowColor: 'rgba(231, 76, 60, 0.8)',
   },
   boardContainer: {
     flex: 1,
