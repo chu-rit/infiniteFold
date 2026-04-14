@@ -34,62 +34,69 @@ function canFold(board, direction, depth) {
     if (sourceValue === 0) return;
 
     const targetValue = board[toRow][toCol];
-
-    if (targetValue !== 0 && targetValue !== sourceValue) {
-      mismatches.push({ 
-        row: fromRow, 
-        col: fromCol, 
-        targetRow: toRow, 
-        targetCol: toCol 
-      });
-      return;
+    if (targetValue === 0 || targetValue === sourceValue) {
+      moves.push({ from: { row: fromRow, col: fromCol }, to: { row: toRow, col: toCol }, value: sourceValue });
+    } else {
+      mismatches.push({ from: { row: fromRow, col: fromCol }, to: { row: toRow, col: toCol }, sourceValue, targetValue });
     }
-
-    moves.push({ 
-      from: { row: fromRow, col: fromCol }, 
-      to: { row: toRow, col: toCol }, 
-      value: sourceValue 
-    });
   };
 
   if (direction === DIRECTIONS.TOP) {
-    for (let row = 0; row < depth; row++) {
+    if (depth === 1) {
       for (let col = 0; col < BOARD_SIZE; col++) {
-        const targetRow = getSymmetricIndex(row, depth);
-        if (targetRow >= 0) validateAndAddMove(row, col, targetRow, col);
+        validateAndAddMove(0, col, 1, col);
+        validateAndAddMove(BOARD_SIZE - 1, col, BOARD_SIZE - 2, col);
+      }
+    } else if (depth === 2) {
+      for (let col = 0; col < BOARD_SIZE; col++) {
+        for (let row = 0; row < BOARD_SIZE / 2; row++) {
+          validateAndAddMove(row, col, BOARD_SIZE - 1 - row, col);
+        }
       }
     }
   } else if (direction === DIRECTIONS.BOTTOM) {
-    for (let row = BOARD_SIZE - 1; row >= BOARD_SIZE - depth; row--) {
+    if (depth === 1) {
       for (let col = 0; col < BOARD_SIZE; col++) {
-        const targetRow = getSymmetricIndex(row, depth);
-        if (targetRow >= 0) validateAndAddMove(row, col, targetRow, col);
+        validateAndAddMove(1, col, 0, col);
+        validateAndAddMove(BOARD_SIZE - 2, col, BOARD_SIZE - 1, col);
+      }
+    } else if (depth === 2) {
+      for (let col = 0; col < BOARD_SIZE; col++) {
+        for (let row = 0; row < BOARD_SIZE / 2; row++) {
+          validateAndAddMove(BOARD_SIZE - 1 - row, col, row, col);
+        }
       }
     }
   } else if (direction === DIRECTIONS.LEFT) {
-    for (let col = 0; col < depth; col++) {
+    if (depth === 1) {
       for (let row = 0; row < BOARD_SIZE; row++) {
-        const targetCol = getSymmetricIndex(col, depth);
-        if (targetCol >= 0) validateAndAddMove(row, col, row, targetCol);
+        validateAndAddMove(row, 0, row, 1);
+        validateAndAddMove(row, BOARD_SIZE - 1, row, BOARD_SIZE - 2);
+      }
+    } else if (depth === 2) {
+      for (let row = 0; row < BOARD_SIZE; row++) {
+        for (let col = 0; col < BOARD_SIZE / 2; col++) {
+          validateAndAddMove(row, col, row, BOARD_SIZE - 1 - col);
+        }
       }
     }
   } else if (direction === DIRECTIONS.RIGHT) {
-    for (let col = BOARD_SIZE - 1; col >= BOARD_SIZE - depth; col--) {
+    if (depth === 1) {
       for (let row = 0; row < BOARD_SIZE; row++) {
-        const targetCol = getSymmetricIndex(col, depth);
-        if (targetCol >= 0) validateAndAddMove(row, col, row, targetCol);
+        validateAndAddMove(row, 1, row, 0);
+        validateAndAddMove(row, BOARD_SIZE - 2, row, BOARD_SIZE - 1);
+      }
+    } else if (depth === 2) {
+      for (let row = 0; row < BOARD_SIZE; row++) {
+        for (let col = 0; col < BOARD_SIZE / 2; col++) {
+          validateAndAddMove(row, BOARD_SIZE - 1 - col, row, col);
+        }
       }
     }
   }
 
-  const hasBlocksInFoldArea = moves.length > 0;
-
-  return { 
-    possible: mismatches.length === 0 && hasBlocksInFoldArea, 
-    moves, 
-    mismatches,
-    isEmpty: !hasBlocksInFoldArea && mismatches.length === 0
-  };
+  const possible = moves.length > 0 && mismatches.length === 0;
+  return { possible, moves, mismatches };
 }
 
 // Execute a fold
@@ -98,6 +105,14 @@ function executeFold(board, direction, depth) {
 
   if (!possible) {
     return { board, merged: false, mergeCount: 0, points: 0, mismatches };
+  }
+
+  const preMergeValues = new Set();
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = 0; col < BOARD_SIZE; col++) {
+      const val = board[row][col];
+      if (val !== 0) preMergeValues.add(val);
+    }
   }
 
   const newBoard = board.map(row => [...row]);
@@ -136,62 +151,109 @@ function executeFold(board, direction, depth) {
     merged: mergeCount > 0, 
     mergeCount, 
     points, 
-    mismatches: [] 
+    mismatches: [],
+    preMergeValues: Array.from(preMergeValues)
   };
 }
 
 // Get preview for ghost tiles
 function getFoldPreview(board, direction, depth) {
-  const { possible, moves, mismatches, isEmpty } = canFold(board, direction, depth);
-
-  if (!possible) {
-    return { valid: false, ghosts: [], mismatches, isEmpty };
+  const { possible, moves, mismatches } = canFold(board, direction, depth);
+  
+  if (!possible || mismatches.length > 0) {
+    return { valid: false, ghosts: [], mismatches };
   }
 
-  const ghosts = moves.map(move => ({
-    row: move.to.row,
-    col: move.to.col,
-    value: move.value,
-    isMerge: board[move.to.row][move.to.col] === move.value && board[move.to.row][move.to.col] !== 0
-  }));
+  const ghosts = [];
+  const newBoard = board.map(row => [...row]);
+  const mergedTargets = new Set();
 
-  return { valid: true, ghosts, mismatches: [], isEmpty: false };
-}
+  const sortedMoves = [...moves].sort((a, b) => {
+    const distA = Math.min(a.from.row, a.from.col, BOARD_SIZE - 1 - a.from.row, BOARD_SIZE - 1 - a.from.col);
+    const distB = Math.min(b.from.row, b.from.col, BOARD_SIZE - 1 - b.from.row, BOARD_SIZE - 1 - b.from.col);
+    return distA - distB;
+  });
 
-// Spawn new number
-function spawnNewNumber(board) {
-  const emptyCells = [];
-  
-  for (let row = 0; row < BOARD_SIZE; row++) {
-    for (let col = 0; col < BOARD_SIZE; col++) {
-      if (board[row][col] === 0) {
-        emptyCells.push({ row, col });
-      }
+  for (const move of sortedMoves) {
+    const { from, to, value } = move;
+    const targetKey = `${to.row},${to.col}`;
+
+    newBoard[from.row][from.col] = 0;
+
+    if (mergedTargets.has(targetKey)) continue;
+
+    const targetValue = newBoard[to.row][to.col];
+
+    if (targetValue === 0) {
+      ghosts.push({ row: to.row, col: to.col, value, isMerge: false });
+      newBoard[to.row][to.col] = value;
+    } else if (targetValue === value) {
+      ghosts.push({ row: to.row, col: to.col, value: value * 2, isMerge: true });
+      newBoard[to.row][to.col] = value * 2;
+      mergedTargets.add(targetKey);
     }
   }
 
-  if (emptyCells.length === 0) return board;
+  return { valid: true, ghosts, mismatches: [] };
+}
 
-  const randomCell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+// Spawn new number - A 방식: 접은 후 보드의 남은 값들 중에서만 선택
+// specificPosition: 특정 위치에 스폰 (별표 위치용), 없으면 랜덤 위치
+function spawnNewNumber(board, specificPosition = null) {
+  // 숫자 선택 로직
+  const existing = new Set();
+  board.forEach(row => row.forEach(c => { 
+    const val = c;
+    if(val) existing.add(val); 
+  }));
+  const vals = Array.from(existing);
+  
+  let spawnValue = 2;
+  if (vals.length > 0) {
+    spawnValue = vals[Math.floor(Math.random() * vals.length)];
+  }
+  
+  // 위치 선택
+  let targetCell;
+  if (specificPosition) {
+    // 특정 위치 지정 (별표 위치)
+    targetCell = specificPosition;
+  } else {
+    // 랜덤 빈 셀 선택
+    const emptyCells = [];
+    for (let row = 0; row < BOARD_SIZE; row++) {
+      for (let col = 0; col < BOARD_SIZE; col++) {
+        if (board[row][col] === 0) emptyCells.push({ row, col });
+      }
+    }
+    if (emptyCells.length === 0) return board;
+    targetCell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+  }
+  
   const newBoard = board.map(row => [...row]);
-  newBoard[randomCell.row][randomCell.col] = 2;
-
+  newBoard[targetCell.row][targetCell.col] = spawnValue;
   return newBoard;
 }
 
-// Check game over
-function checkGameOver(board) {
+// Get count of valid fold moves (0 = game over)
+function getValidFoldCount(board) {
   const directions = Object.values(DIRECTIONS);
   const depths = [1, 2];
+  let count = 0;
 
   for (const direction of directions) {
     for (const depth of depths) {
       const { possible } = canFold(board, direction, depth);
-      if (possible) return false;
+      if (possible) count++;
     }
   }
 
-  return true;
+  return count;
+}
+
+// Check game over - for backward compatibility
+function checkGameOver(board) {
+  return getValidFoldCount(board) === 0;
 }
 
 // Initialize board with center 2x2 filled
@@ -205,4 +267,17 @@ function initializeBoard() {
   return board;
 }
 
-export { BOARD_SIZE, DIRECTIONS, initializeBoard, canFold, executeFold, getFoldPreview, spawnNewNumber, checkGameOver };
+// Export for use in other modules
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    BOARD_SIZE,
+    DIRECTIONS,
+    initializeBoard,
+    canFold,
+    executeFold,
+    getFoldPreview,
+    spawnNewNumber,
+    getValidFoldCount,
+    checkGameOver
+  };
+}

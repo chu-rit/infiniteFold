@@ -181,45 +181,61 @@ export function getFoldPreview(board, direction, depth) {
   return { valid: true, ghosts, mismatches: [], isEmpty: false };
 }
 
-// Spawn new number
-export function spawnNewNumber(board, preMergeValues) {
-  const emptyCells = [];
-  for (let row = 0; row < BOARD_SIZE; row++) {
-    for (let col = 0; col < BOARD_SIZE; col++) {
-      if (getValue(board[row][col]) === 0) emptyCells.push({ row, col });
-    }
-  }
-
-  if (emptyCells.length === 0) return board;
-
-  const randomCell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
-  const newBoard = board.map(row => [...row]);
+// Spawn new number - A 방식: 접은 후 보드의 남은 값들 중에서만 선택
+// specificPosition: 특정 위치에 스폰 (별표 위치용), 없으면 랜덤 위치
+export function spawnNewNumber(board, specificPosition = null) {
+  // 숫자 선택 로직
+  const existing = new Set();
+  board.forEach(row => row.forEach(c => { 
+    const val = getValue(c);
+    if(val) existing.add(val); 
+  }));
+  const vals = Array.from(existing);
   
   let spawnValue = 2;
-  if (preMergeValues && preMergeValues.length > 0) {
-    spawnValue = preMergeValues[Math.floor(Math.random() * preMergeValues.length)];
-  } else {
-    const existing = new Set();
-    board.forEach(row => row.forEach(c => { if(getValue(c)) existing.add(getValue(c)) }));
-    const vals = Array.from(existing);
-    if (vals.length > 0) spawnValue = vals[Math.floor(Math.random() * vals.length)];
+  if (vals.length > 0) {
+    spawnValue = vals[Math.floor(Math.random() * vals.length)];
   }
   
-  newBoard[randomCell.row][randomCell.col] = spawnValue;
+  // 위치 선택
+  let targetCell;
+  if (specificPosition) {
+    // 특정 위치 지정 (별표 위치)
+    targetCell = specificPosition;
+  } else {
+    // 랜덤 빈 셀 선택
+    const emptyCells = [];
+    for (let row = 0; row < BOARD_SIZE; row++) {
+      for (let col = 0; col < BOARD_SIZE; col++) {
+        if (getValue(board[row][col]) === 0) emptyCells.push({ row, col });
+      }
+    }
+    if (emptyCells.length === 0) return board;
+    targetCell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+  }
+  
+  const newBoard = board.map(row => [...row]);
+  newBoard[targetCell.row][targetCell.col] = spawnValue;
   return newBoard;
 }
 
-// Check game over
-export function checkGameOver(board) {
+// Get count of valid fold moves (0 = game over)
+export function getValidFoldCount(board) {
   const directions = Object.values(DIRECTIONS);
   const depths = [1, 2];
+  let count = 0;
 
   for (const direction of directions) {
     for (const depth of depths) {
       const { possible } = canFold(board, direction, depth);
-      if (possible) return false;
+      if (possible) count++;
     }
   }
 
-  return true;
+  return count;
+}
+
+// Check game over - for backward compatibility
+export function checkGameOver(board) {
+  return getValidFoldCount(board) === 0;
 }

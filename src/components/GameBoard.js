@@ -12,7 +12,7 @@ const CANCEL_THRESHOLD = 180; // Swipe beyond board size to cancel
 const GAP = 8;
 const PADDING = 12;
 
-export function GameBoard({ board, size, onFold, isGameOver }) {
+export function GameBoard({ board, size, onFold, isGameOver, starPositions, grayStars }) {
   const [preview, setPreview] = useState({ valid: true, ghosts: [], mismatches: [] });
   const [activeDirection, setActiveDirection] = useState(null);
   const [activeDepth, setActiveDepth] = useState(null);
@@ -279,6 +279,43 @@ export function GameBoard({ board, size, onFold, isGameOver }) {
               isMerge={ghost.isMerge}
             />
           ))}
+          
+          {/* Star Markers - indicating next spawn/upgrade position */}
+          {starPositions && starPositions.map((star, index) => (
+            <View
+              key={`star-${index}`}
+              style={[
+                styles.starMarker,
+                {
+                  width: cellSize,
+                  height: cellSize,
+                  left: PADDING + star.col * (cellSize + GAP),
+                  top: PADDING + star.row * (cellSize + GAP),
+                },
+              ]}
+            >
+              <Text style={styles.starText}>★</Text>
+            </View>
+          ))}
+          
+          {/* Gray Stars - preview only */}
+          {grayStars && grayStars.map((star, index) => (
+            <View
+              key={`gray-star-${index}`}
+              style={[
+                styles.starMarker,
+                styles.grayStarMarker,
+                {
+                  width: cellSize,
+                  height: cellSize,
+                  left: PADDING + star.col * (cellSize + GAP),
+                  top: PADDING + star.row * (cellSize + GAP),
+                },
+              ]}
+            >
+              <Text style={[styles.starText, styles.grayStarText]}>★</Text>
+            </View>
+          ))}
         </View>
 
         {/* Fold Direction Arrow */}
@@ -384,6 +421,25 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.3)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
+  },
+  starMarker: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    borderRadius: 6,
+  },
+  starText: {
+    fontSize: 32,
+    color: '#edc22e',
+    opacity: 0.8,
+  },
+  grayStarMarker: {
+    opacity: 0.4,
+  },
+  grayStarText: {
+    color: '#999',
+    opacity: 0.5,
   },
   directionOverlay: {
     position: 'absolute',

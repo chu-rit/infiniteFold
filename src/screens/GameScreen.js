@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Dimensions, SafeAreaView, StatusBar, Platform } from 'react-native';
+import { StyleSheet, View, Text, Dimensions, StatusBar, Platform } from 'react-native';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
@@ -12,7 +12,7 @@ import Animated, {
   Extrapolate
 } from 'react-native-reanimated';
 import { GameBoard } from '../components/GameBoard';
-import { initializeBoard, checkGameOver, spawnNewNumber, executeFold } from '../utils/gameLogic';
+import { initializeBoard, checkGameOver, spawnNewNumber, executeFold, getValidFoldCount } from '../utils/gameLogic';
 
 const { width, height } = Dimensions.get('window');
 const BOARD_SIZE = Math.min(width * 0.92, 380);
@@ -55,6 +55,32 @@ export default function GameScreen() {
   const [isGameOver, setIsGameOver] = useState(false);
   const [gameOverDismissed, setGameOverDismissed] = useState(false);
   const [comboCount, setComboCount] = useState(0);
+  const [starPositions, setStarPositions] = useState([]);
+  const [grayStars, setGrayStars] = useState([]); // 회색 별표 (미리보기만)
+  const [validFoldCount, setValidFoldCount] = useState(() => getValidFoldCount(initializeBoard()));
+  
+  // 별표 위치 생성 함수 (30% 기존 기능, 70% 회색 별표)
+  const generateStarPositions = useCallback((currentBoard) => {
+    const emptyCells = [];
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 4; col++) {
+        if (currentBoard[row][col] === 0) {
+          emptyCells.push({ row, col });
+        }
+      }
+    }
+    if (emptyCells.length === 0) return { stars: [], grayStars: [] };
+    
+    const randomPos = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+    
+    if (Math.random() <= 0.3) {
+      // 30%: 기존 기능 있는 별표
+      return { stars: [randomPos], grayStars: [] };
+    } else {
+      // 70%: 회색 별표 (미리보기만)
+      return { stars: [], grayStars: [randomPos] };
+    }
+  }, []);
   
   // Reanimated values
   const comboScale = useSharedValue(0);
@@ -63,12 +89,17 @@ export default function GameScreen() {
   const particleIdCounter = useRef(0);
 
   const resetGame = useCallback(() => {
-    setBoard(initializeBoard());
+    const newBoard = initializeBoard();
+    setBoard(newBoard);
     setScore(0);
     setIsGameOver(false);
     setGameOverDismissed(false);
     setComboCount(0);
-  }, []);
+    const starResult = generateStarPositions(newBoard);
+    setStarPositions(starResult.stars);
+    setGrayStars(starResult.grayStars);
+    setValidFoldCount(getValidFoldCount(newBoard));
+  }, [generateStarPositions]);
 
   const dismissGameOver = useCallback(() => {
     setGameOverDismissed(true);
@@ -86,16 +117,23 @@ export default function GameScreen() {
     }
   }, []);
 
-  // Combo effect - animated show/hide when combo changes
+  // Combo effect - Tetris style popup
   useEffect(() => {
     if (comboCount > 1) {
-      // Trigger Burst Animation
-      comboScale.value = 0;
-      comboOpacity.value = 1;
+      // 초기 상태
+      comboScale.value = 0.5;
+      comboOpacity.value = 0;
       
+      // 테트리스 스타일: 크게 등장 → 유지 → 위로 올라가며 사라짐
       comboScale.value = withSequence(
-        withSpring(1.2, { damping: 10, stiffness: 100 }),
-        withSpring(1.0, { damping: 15, stiffness: 100 })
+        withTiming(1.2, { duration: 150 }),  // 빠르게 확대
+        withTiming(1.0, { duration: 100 }),   // 정상 크기
+        withDelay(700, withTiming(0.8, { duration: 200 }))  // 퇴장 전 축소
+      );
+      
+      comboOpacity.value = withSequence(
+        withTiming(1, { duration: 100 }),   // 즉시 표시
+        withDelay(800, withTiming(0, { duration: 200 }))  // 800ms 후 사라짐
       );
 
       // Spawn particles
@@ -105,13 +143,10 @@ export default function GameScreen() {
       }));
       setParticles(prev => [...prev, ...newParticles]);
 
-      // Fade out after delay
-      comboOpacity.value = withDelay(800, withTiming(0, { duration: 300 }));
-      
       // Cleanup particles after animation
       const timer = setTimeout(() => {
         setParticles(prev => prev.filter(p => !newParticles.find(np => np.id === p.id)));
-      }, 1000);
+      }, 1200);
       
       return () => clearTimeout(timer);
     } else {
@@ -124,6 +159,7 @@ export default function GameScreen() {
     opacity: comboOpacity.value,
     transform: [
       { scale: comboScale.value },
+      { translateY: interpolate(comboOpacity.value, [1, 0], [0, -30]) },
       { rotateZ: `${interpolate(comboScale.value, [0, 1], [-10, 0])}deg` }
     ],
   }));
@@ -140,7 +176,7 @@ export default function GameScreen() {
       return { valid: true, mergeCount: result.mergeCount, gameOver: true };
     }
 
-    let newBoard = result.board;
+    let newBoard = result.board.map(row => [...row]);
     let newCombo = comboCount;
 
     if (result.mergeCount > 0) {
@@ -150,12 +186,35 @@ export default function GameScreen() {
       newCombo = 0;
       setComboCount(0);
     }
-    // 3콤보 이상일 때는 블록 생성 안 함
-    if (newCombo < 3) {
-      newBoard = spawnNewNumber(newBoard, result.preMergeValues);
+
+    // 별표 처리: 30% 별표만 기능 작동
+    let starUpgraded = false;
+    if (starPositions.length > 0) {
+      // 기존 기능 있는 별표만 처리
+      for (const starPos of starPositions) {
+        const { row, col } = starPos;
+        if (newBoard[row][col] === 0) {
+          // 별표 위치가 비어있음 → spawnNewNumber 사용
+          newBoard = spawnNewNumber(newBoard, { row, col });
+        } else {
+          // 별표 위치가 메워짐 → 블록 업그레이드
+          newBoard[row][col] *= 2;
+          starUpgraded = true;
+        }
+      }
+    } else {
+      // 기존 별표가 없거나 회색 별표만 있을 때: 일반적인 블록 생성
+      newBoard = spawnNewNumber(newBoard);
     }
 
-    const newScore = score + result.points;
+    // 다음 턴 별표 위치 생성
+    const nextStarResult = generateStarPositions(newBoard);
+    setStarPositions(nextStarResult.stars);
+    setGrayStars(nextStarResult.grayStars);
+
+    // 콤보 보너스 점수: 1콤보 +2, 2콤보 +4, 3콤보 +8...
+    const comboBonus = newCombo > 0 ? Math.pow(2, newCombo) : 0;
+    const newScore = score + result.points + comboBonus;
     setScore(newScore);
     if (newScore > bestScore) {
       setBestScore(newScore);
@@ -163,25 +222,37 @@ export default function GameScreen() {
 
     setBoard(newBoard);
 
-    if (checkGameOver(newBoard)) {
+    // 유효한 접기 경우의 수 계산
+    const newValidFoldCount = getValidFoldCount(newBoard);
+    setValidFoldCount(newValidFoldCount);
+    
+    if (newValidFoldCount === 0) {
       setIsGameOver(true);
     }
 
-    return { valid: true, mergeCount: result.mergeCount };
-  }, [board, score, bestScore, isGameOver, comboCount]);
+    return { valid: true, mergeCount: result.mergeCount, starUpgraded };
+  }, [board, score, bestScore, isGameOver, comboCount, starPositions, generateStarPositions, getValidFoldCount]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#faf8ef" />
       
-      {/* Header */}
-      <View style={styles.header}>
+      <View style={styles.contentWrapper}>
+        {/* Header */}
+        <View style={styles.header}>
         <View style={styles.titleBlock}>
           <Text style={styles.title}>INFINITE</Text>
           <Text style={styles.titleAccent}>FOLD</Text>
         </View>
         
         <View style={styles.scoreBlock}>
+          {/* MOVES 박스 - 유효한 접기 경우의 수 */}
+          <View style={[styles.scoreBox, styles.movesBox]}>
+            <Text style={styles.scoreLabel}>Possible{'\n'}Moves</Text>
+            <Text style={[styles.scoreValue, validFoldCount <= 2 && styles.movesValueWarning]}>
+              {validFoldCount}
+            </Text>
+          </View>
           <View style={styles.scoreBox}>
             <Text style={styles.scoreLabel}>SCORE</Text>
             <Text style={styles.scoreValue}>{score}</Text>
@@ -209,7 +280,7 @@ export default function GameScreen() {
             <Text style={[
               styles.comboBurstNumber,
               comboCount >= 3 && styles.comboBurstNumberSpecial
-            ]}>{comboCount}</Text>
+            ]}>{comboCount - 1}</Text>
           </View>
         </Animated.View>
       </View>
@@ -221,6 +292,8 @@ export default function GameScreen() {
           size={BOARD_SIZE}
           onFold={handleFold}
           isGameOver={isGameOver}
+          starPositions={starPositions}
+          grayStars={grayStars}
         />
       </View>
 
@@ -238,25 +311,17 @@ export default function GameScreen() {
         </View>
       )}
 
-      {/* Retry Button - appears after dismissing popup */}
+      {/* Retry Button - Below Game Board */}
       {isGameOver && gameOverDismissed && (
-        <View style={styles.retryBar}>
+        <View style={styles.retrySection}>
           <View style={styles.retryButton} onTouchEnd={resetGame}>
-            <Text style={styles.retryButtonText}>🔄 TRY AGAIN</Text>
+            <Text style={styles.retryIcon}>↻</Text>
+            <Text style={styles.retryText}>TRY AGAIN</Text>
           </View>
         </View>
       )}
-
-      {/* Instructions */}
-      <View style={styles.instructions}>
-        <Text style={styles.instructionText}>
-          Swipe to fold • Short: 1-Row • Long: 2-Row
-        </Text>
-        <Text style={styles.tipText}>
-          Always spawns new number after each fold
-        </Text>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -265,11 +330,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#faf8ef',
     overflow: 'hidden',
+    justifyContent: 'center',
+  },
+  contentWrapper: {
+    width: '100%',
+    alignItems: 'center',
   },
   header: {
+    width: '100%',
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 12,
+    marginBottom: 20,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
@@ -313,6 +385,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#fff',
+  },
+  movesBox: {
+    backgroundColor: '#8f7a66',  // 더 어두운 색상으로 구분
+  },
+  movesValueWarning: {
+    color: '#ff6b6b',  // 남은 횟수 적을 때 경고 색상
   },
   comboOverlayContainer: {
     position: 'absolute',
@@ -371,8 +449,7 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(231, 76, 60, 0.8)',
   },
   boardContainer: {
-    flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
     paddingHorizontal: 16,
     overflow: 'hidden',
@@ -430,37 +507,29 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
-  retryBar: {
-    backgroundColor: '#f65e3b',
-    marginHorizontal: 16,
-    marginBottom: 16,
-    paddingVertical: 14,
-    borderRadius: 12,
+  retrySection: {
+    width: '100%',
     alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 20,
   },
   retryButton: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#e74c3c',
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 25,
+    gap: 8,
   },
-  retryButtonText: {
+  retryIcon: {
+    fontSize: 20,
+    color: '#fff',
+  },
+  retryText: {
+    fontSize: 16,
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 18,
-  },
-  instructions: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-    paddingTop: 12,
-    alignItems: 'center',
-  },
-  instructionText: {
-    fontSize: 13,
-    color: '#776e65',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  tipText: {
-    fontSize: 12,
-    color: '#f65e3b',
-    textAlign: 'center',
   },
 });
