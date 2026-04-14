@@ -1,779 +1,633 @@
-// React-based Web App for Infinite Fold
-(function() {
-  'use strict';
+// Infinite Fold - Web Version
+import { 
+  BOARD_SIZE, 
+  DIRECTIONS, 
+  initializeBoard, 
+  executeFold, 
+  getFoldPreview, 
+  spawnNewNumber, 
+  checkGameOver 
+} from './game-logic.js';
 
-  // Game Constants
-  const BOARD_SIZE = 4;
-  const INITIAL_VALUE = 2;
-  const DIRECTIONS = {
-    TOP: 'top',
-    BOTTOM: 'bottom',
-    LEFT: 'left',
-    RIGHT: 'right',
-  };
+// Constants
+const SWIPE_THRESHOLD = 20;
+const DEPTH_THRESHOLD = 80;
+const CANCEL_THRESHOLD = 180;
+const GAP = 8;
+const PADDING = 12;
 
-  // Game State
-  let gameState = {
-    board: [],
-    score: 0,
-    bestScore: 0,
-    comboCount: 0,
-    isGameOver: false,
-    gameOverDismissed: false,
-    starPositions: [],
-    grayStars: [],
-    validFoldCount: 8,
-  };
+// Game State
+let board = initializeBoard();
+let score = 0;
+let bestScore = localStorage.getItem('infiniteFoldBestScore') || 0;
+let isGameOver = false;
+let gameOverDismissed = false;
+let comboCount = 0;
 
-  // Touch handling
-  let touchStartX = 0;
-  let touchStartY = 0;
-  let activeDirection = null;
-  let activeDepth = null;
-  let isCancelled = false;
+// Preview State
+let activeDirection = null;
+let activeDepth = null;
+let preview = { valid: true, ghosts: [], mismatches: [] };
+let isCancelled = false;
+let startPosition = { x: 0, y: 0 };
 
-  const SWIPE_THRESHOLD = 20;
-  const DEPTH_THRESHOLD = 80;
-  const CANCEL_THRESHOLD = 180;
+// Touch/Mouse handling
+let isDragging = false;
+let dragStartX = 0;
+let dragStartY = 0;
+let currentTranslateX = 0;
+let currentTranslateY = 0;
 
-  // Game Logic Functions
-  function getSymmetricIndex(index, foldDepth, boardSize = BOARD_SIZE) {
-    if (foldDepth === 1) {
-      if (index === 0) return 1;
-      if (index === boardSize - 1) return boardSize - 2;
-      if (index === 1) return 0;
-      if (index === boardSize - 2) return boardSize - 1;
-      return -1;
-    }
-    if (foldDepth === 2) {
-      return boardSize - 1 - index;
-    }
-    return -1;
+// DOM Elements
+const root = document.getElementById('root');
+let boardElement = null;
+let boardSize = 0;
+let cellSize = 0;
+
+// Initialize
+function init() {
+  render();
+  setupEventListeners();
+  updateBoardSize();
+  window.addEventListener('resize', updateBoardSize);
+}
+
+function updateBoardSize() {
+  const container = document.querySelector('.board-container');
+  if (!container) return;
+  const containerWidth = container.clientWidth - 32;
+  const containerHeight = window.innerHeight - 250;
+  boardSize = Math.min(containerWidth, containerHeight, 380);
+  cellSize = (boardSize - PADDING * 2 - GAP * 3) / 4;
+  if (boardElement) {
+    boardElement.style.width = boardSize + 'px';
+    boardElement.style.height = boardSize + 'px';
+  }
+  renderBoard();
+}
+
+function resetGame() {
+  board = initializeBoard();
+  score = 0;
+  isGameOver = false;
+  gameOverDismissed = false;
+  comboCount = 0;
+  activeDirection = null;
+  activeDepth = null;
+  preview = { valid: true, ghosts: [], mismatches: [] };
+  render();
+}
+
+function dismissGameOver() {
+  gameOverDismissed = true;
+  render();
+}
+
+function handleFold(direction, depth) {
+  const result = executeFold(board, direction, depth);
+  
+  if (result.mismatches.length > 0) {
+    return { valid: false, mismatches: result.mismatches };
   }
 
-  function canFold(board, direction, depth) {
-    const moves = [];
-    const mismatches = [];
-
-    const validateAndAddMove = (fromRow, fromCol, toRow, toCol) => {
-      const sourceValue = board[fromRow][fromCol];
-      if (sourceValue === 0) return;
-
-      const targetValue = board[toRow][toCol];
-      if (targetValue === 0 || targetValue === sourceValue) {
-        moves.push({ from: { row: fromRow, col: fromCol }, to: { row: toRow, col: toCol }, value: sourceValue });
-      } else {
-        mismatches.push({ from: { row: fromRow, col: fromCol }, to: { row: toRow, col: toCol }, sourceValue, targetValue });
-      }
-    };
-
-    if (direction === DIRECTIONS.TOP) {
-      if (depth === 1) {
-        for (let col = 0; col < BOARD_SIZE; col++) {
-          validateAndAddMove(0, col, 1, col);
-          validateAndAddMove(BOARD_SIZE - 1, col, BOARD_SIZE - 2, col);
-        }
-      } else if (depth === 2) {
-        for (let col = 0; col < BOARD_SIZE; col++) {
-          for (let row = 0; row < BOARD_SIZE / 2; row++) {
-            validateAndAddMove(row, col, BOARD_SIZE - 1 - row, col);
-          }
-        }
-      }
-    } else if (direction === DIRECTIONS.BOTTOM) {
-      if (depth === 1) {
-        for (let col = 0; col < BOARD_SIZE; col++) {
-          validateAndAddMove(1, col, 0, col);
-          validateAndAddMove(BOARD_SIZE - 2, col, BOARD_SIZE - 1, col);
-        }
-      } else if (depth === 2) {
-        for (let col = 0; col < BOARD_SIZE; col++) {
-          for (let row = 0; row < BOARD_SIZE / 2; row++) {
-            validateAndAddMove(BOARD_SIZE - 1 - row, col, row, col);
-          }
-        }
-      }
-    } else if (direction === DIRECTIONS.LEFT) {
-      if (depth === 1) {
-        for (let row = 0; row < BOARD_SIZE; row++) {
-          validateAndAddMove(row, 0, row, 1);
-          validateAndAddMove(row, BOARD_SIZE - 1, row, BOARD_SIZE - 2);
-        }
-      } else if (depth === 2) {
-        for (let row = 0; row < BOARD_SIZE; row++) {
-          for (let col = 0; col < BOARD_SIZE / 2; col++) {
-            validateAndAddMove(row, col, row, BOARD_SIZE - 1 - col);
-          }
-        }
-      }
-    } else if (direction === DIRECTIONS.RIGHT) {
-      if (depth === 1) {
-        for (let row = 0; row < BOARD_SIZE; row++) {
-          validateAndAddMove(row, 1, row, 0);
-          validateAndAddMove(row, BOARD_SIZE - 2, row, BOARD_SIZE - 1);
-        }
-      } else if (depth === 2) {
-        for (let row = 0; row < BOARD_SIZE; row++) {
-          for (let col = 0; col < BOARD_SIZE / 2; col++) {
-            validateAndAddMove(row, BOARD_SIZE - 1 - col, row, col);
-          }
-        }
-      }
-    }
-
-    const possible = moves.length > 0 && mismatches.length === 0;
-    return { possible, moves, mismatches };
+  // Game over state - only provide feedback, don't change state
+  if (isGameOver) {
+    return { valid: true, mergeCount: result.mergeCount, gameOver: true };
   }
 
-  function executeFold(board, direction, depth) {
-    const { possible, moves, mismatches } = canFold(board, direction, depth);
+  let newBoard = result.board;
 
-    if (!possible) {
-      return { board, merged: false, mergeCount: 0, points: 0, mismatches };
-    }
+  if (result.mergeCount > 0) {
+    comboCount += 1;
+  } else {
+    comboCount = 0;
+  }
+  newBoard = spawnNewNumber(newBoard);
 
-    const newBoard = board.map(row => [...row]);
-    let mergeCount = 0;
-    let points = 0;
-    const mergedTargets = new Set();
-
-    const sortedMoves = [...moves].sort((a, b) => {
-      const distA = Math.min(a.from.row, a.from.col, BOARD_SIZE - 1 - a.from.row, BOARD_SIZE - 1 - a.from.col);
-      const distB = Math.min(b.from.row, b.from.col, BOARD_SIZE - 1 - b.from.row, BOARD_SIZE - 1 - b.from.col);
-      return distA - distB;
-    });
-
-    for (const move of sortedMoves) {
-      const { from, to, value } = move;
-      const targetKey = `${to.row},${to.col}`;
-
-      newBoard[from.row][from.col] = 0;
-
-      if (mergedTargets.has(targetKey)) continue;
-
-      const targetValue = newBoard[to.row][to.col];
-
-      if (targetValue === 0) {
-        newBoard[to.row][to.col] = value;
-      } else if (targetValue === value) {
-        newBoard[to.row][to.col] = value * 2;
-        mergedTargets.add(targetKey);
-        mergeCount++;
-        points += value * 2;
-      }
-    }
-
-    return { 
-      board: newBoard, 
-      merged: mergeCount > 0, 
-      mergeCount, 
-      points, 
-      mismatches: []
-    };
+  score += result.points;
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem('infiniteFoldBestScore', bestScore);
   }
 
-  function spawnNewNumber(board, specificPosition = null) {
-    const existing = new Set();
-    board.forEach(row => row.forEach(c => { 
-      const val = c;
-      if(val) existing.add(val); 
-    }));
-    const vals = Array.from(existing);
+  board = newBoard;
+
+  if (checkGameOver(newBoard)) {
+    isGameOver = true;
+  }
+
+  return { valid: true, mergeCount: result.mergeCount };
+}
+
+function getDirectionFromOffset(dx, dy) {
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  if (Math.max(absDx, absDy) < SWIPE_THRESHOLD) return null;
+  
+  if (absDx > absDy) {
+    return dx > 0 ? DIRECTIONS.LEFT : DIRECTIONS.RIGHT;
+  }
+  return dy > 0 ? DIRECTIONS.TOP : DIRECTIONS.BOTTOM;
+}
+
+function isCenterStart(x, y) {
+  const cellWithGap = cellSize + GAP;
+  const col = Math.floor((x - PADDING + GAP/2) / cellWithGap);
+  const row = Math.floor((y - PADDING + GAP/2) / cellWithGap);
+  const clampedCol = Math.max(0, Math.min(3, col));
+  const clampedRow = Math.max(0, Math.min(3, row));
+  return (clampedRow === 1 || clampedRow === 2) && (clampedCol === 1 || clampedCol === 2);
+}
+
+function getDepthFromOffset(dx, dy, startX, startY) {
+  const maxOffset = Math.max(Math.abs(dx), Math.abs(dy));
+  
+  if (maxOffset > CANCEL_THRESHOLD) return 'cancel';
+  if (maxOffset < SWIPE_THRESHOLD) return null;
+  
+  const baseDepth = isCenterStart(startX, startY) ? 2 : 1;
+  if (baseDepth === 2) return 2;
+  
+  return maxOffset < DEPTH_THRESHOLD ? 1 : 2;
+}
+
+function setupEventListeners() {
+  // Pointer Events API 사용 (iOS 13+, 더 안정적)
+  if (window.PointerEvent) {
+    document.addEventListener('pointerdown', handlePointerDown, { passive: false });
+    document.addEventListener('pointermove', handlePointerMove, { passive: false });
+    document.addEventListener('pointerup', handlePointerUp, { passive: false });
+    document.addEventListener('pointercancel', handlePointerUp, { passive: false });
+  } else {
+    // Fallback for old browsers
+    document.addEventListener('touchstart', handleTouchStart, { passive: false });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd, { passive: false });
+    document.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }
+}
+
+function handleTouchStart(e) {
+  // 보드 요소가 없으면 리턴
+  if (!boardElement) return;
+  // 멀티터치 무시
+  if (e.touches.length !== 1) return;
+  
+  const touch = e.touches[0];
+  const rect = boardElement.getBoundingClientRect();
+  // 보드 영역 내에서만 시작
+  if (touch.clientX < rect.left || touch.clientX > rect.right ||
+      touch.clientY < rect.top || touch.clientY > rect.bottom) return;
+  
+  // iOS Safari에서는 touchstart preventDefault 하지 않음
+  startDrag(touch.clientX, touch.clientY);
+}
+
+function handleMouseDown(e) {
+  const rect = boardElement.getBoundingClientRect();
+  if (e.clientX < rect.left || e.clientX > rect.right ||
+      e.clientY < rect.top || e.clientY > rect.bottom) return;
+  
+  startDrag(e.clientX, e.clientY);
+}
+
+function startDrag(x, y) {
+  const rect = boardElement.getBoundingClientRect();
+  startPosition = { x: x - rect.left, y: y - rect.top };
+  dragStartX = x;
+  dragStartY = y;
+  isDragging = true;
+  isCancelled = false;
+}
+
+function handleTouchMove(e) {
+  if (!isDragging) return;
+  // 첫 번째 터치 포인트 사용
+  const touch = e.touches[0];
+  if (!touch) return;
+  
+  e.preventDefault();
+  handleDragMove(touch.clientX, touch.clientY);
+}
+
+function handleMouseMove(e) {
+  if (!isDragging) return;
+  handleDragMove(e.clientX, e.clientY);
+}
+
+function handleDragMove(x, y) {
+  currentTranslateX = x - dragStartX;
+  currentTranslateY = y - dragStartY;
+  
+  const direction = getDirectionFromOffset(currentTranslateX, currentTranslateY);
+  const depth = getDepthFromOffset(currentTranslateX, currentTranslateY, startPosition.x, startPosition.y);
+  
+  if (depth === 'cancel') {
+    isCancelled = true;
+    activeDirection = null;
+    activeDepth = null;
+    preview = { valid: true, ghosts: [], mismatches: [] };
+    renderBoard();
+    return;
+  }
+  
+  if (direction !== activeDirection || depth !== activeDepth) {
+    activeDirection = direction;
+    activeDepth = depth;
     
-    let spawnValue = 2;
-    if (vals.length > 0) {
-      spawnValue = vals[Math.floor(Math.random() * vals.length)];
-    }
-    
-    let targetCell;
-    if (specificPosition) {
-      targetCell = specificPosition;
+    if (direction && depth && depth !== 'cancel') {
+      const previewResult = getFoldPreview(board, direction, depth);
+      preview = previewResult;
     } else {
-      const emptyCells = [];
-      for (let row = 0; row < BOARD_SIZE; row++) {
-        for (let col = 0; col < BOARD_SIZE; col++) {
-          if (board[row][col] === 0) emptyCells.push({ row, col });
-        }
-      }
-      if (emptyCells.length === 0) return board;
-      targetCell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+      preview = { valid: true, ghosts: [], mismatches: [] };
+    }
+    renderBoard();
+  }
+}
+
+// Pointer Events handlers (iOS 13+)
+function handlePointerDown(e) {
+  if (!boardElement) return;
+  const rect = boardElement.getBoundingClientRect();
+  if (e.clientX < rect.left || e.clientX > rect.right ||
+      e.clientY < rect.top || e.clientY > rect.bottom) return;
+  
+  e.preventDefault();
+  startDrag(e.clientX, e.clientY);
+}
+
+function handlePointerMove(e) {
+  if (!isDragging) return;
+  e.preventDefault();
+  handleDragMove(e.clientX, e.clientY);
+}
+
+function handlePointerUp(e) {
+  if (!isDragging) return;
+  isDragging = false;
+  e.preventDefault();
+  
+  const direction = getDirectionFromOffset(currentTranslateX, currentTranslateY);
+  const depth = getDepthFromOffset(currentTranslateX, currentTranslateY, startPosition.x, startPosition.y);
+  
+  if (direction && depth && depth !== 'cancel') {
+    const previewResult = getFoldPreview(board, direction, depth);
+    if (previewResult.valid && !previewResult.isEmpty) {
+      handleFold(direction, depth);
+    }
+  }
+  
+  activeDirection = null;
+  activeDepth = null;
+  isCancelled = false;
+  preview = { valid: true, ghosts: [], mismatches: [] };
+  currentTranslateX = 0;
+  currentTranslateY = 0;
+  render();
+}
+
+// Touch fallback (old iOS)
+function handleTouchEnd(e) {
+  if (!isDragging) return;
+  isDragging = false;
+  
+  const direction = getDirectionFromOffset(currentTranslateX, currentTranslateY);
+  const depth = getDepthFromOffset(currentTranslateX, currentTranslateY, startPosition.x, startPosition.y);
+  
+  if (direction && depth && depth !== 'cancel') {
+    const previewResult = getFoldPreview(board, direction, depth);
+    if (previewResult.valid && !previewResult.isEmpty) {
+      handleFold(direction, depth);
+    }
+  }
+  
+  activeDirection = null;
+  activeDepth = null;
+  isCancelled = false;
+  preview = { valid: true, ghosts: [], mismatches: [] };
+  currentTranslateX = 0;
+  currentTranslateY = 0;
+  render();
+}
+
+function handleMouseUp(e) {
+  if (!isDragging) return;
+  isDragging = false;
+  handleDragEnd();
+}
+
+function handleDragEnd() {
+  console.log('handleDragEnd called');
+  console.log('currentTranslate:', currentTranslateX, currentTranslateY);
+  console.log('startPosition:', startPosition.x, startPosition.y);
+  
+  // 취소된 경우
+  if (isCancelled) {
+    console.log('cancelled - resetting');
+    activeDirection = null;
+    activeDepth = null;
+    isCancelled = false;
+    preview = { valid: true, ghosts: [], mismatches: [] };
+    currentTranslateX = 0;
+    currentTranslateY = 0;
+    renderBoard();
+    return;
+  }
+  
+  // 드래그 거리가 충분하지 않으면 무시
+  const direction = getDirectionFromOffset(currentTranslateX, currentTranslateY);
+  const depth = getDepthFromOffset(currentTranslateX, currentTranslateY, startPosition.x, startPosition.y);
+  
+  console.log('direction:', direction, 'depth:', depth);
+  
+  // 유효하지 않은 방향/깊이면 무시
+  if (!direction || !depth || depth === 'cancel') {
+    console.log('invalid direction/depth - resetting only');
+    activeDirection = null;
+    activeDepth = null;
+    preview = { valid: true, ghosts: [], mismatches: [] };
+    currentTranslateX = 0;
+    currentTranslateY = 0;
+    renderBoard();
+    return;
+  }
+  
+  const previewResult = getFoldPreview(board, direction, depth);
+  
+  // 유효한 폴드 실행
+  if (previewResult.valid && !previewResult.isEmpty) {
+    handleFold(direction, depth);
+  }
+  
+  // 상태 초기화
+  activeDirection = null;
+  activeDepth = null;
+  isCancelled = false;
+  preview = { valid: true, ghosts: [], mismatches: [] };
+  currentTranslateX = 0;
+  currentTranslateY = 0;
+  render();
+}
+
+function getAffectedCells() {
+  if (!activeDirection || !activeDepth) return [];
+  const cells = [];
+  
+  if (activeDirection === DIRECTIONS.TOP) {
+    for (let row = 0; row < activeDepth; row++) {
+      for (let col = 0; col < 4; col++) cells.push({ row, col });
+    }
+  } else if (activeDirection === DIRECTIONS.BOTTOM) {
+    for (let row = 4 - activeDepth; row < 4; row++) {
+      for (let col = 0; col < 4; col++) cells.push({ row, col });
+    }
+  } else if (activeDirection === DIRECTIONS.LEFT) {
+    for (let col = 0; col < activeDepth; col++) {
+      for (let row = 0; row < 4; row++) cells.push({ row, col });
+    }
+  } else if (activeDirection === DIRECTIONS.RIGHT) {
+    for (let col = 4 - activeDepth; col < 4; col++) {
+      for (let row = 0; row < 4; row++) cells.push({ row, col });
+    }
+  }
+  return cells;
+}
+
+function isAffectedCell(row, col) {
+  return getAffectedCells().some(c => c.row === row && c.col === col);
+}
+
+function isMismatchCell(row, col) {
+  return preview.mismatches.some(m => 
+    (m.row === row && m.col === col) || 
+    (m.targetRow === row && m.targetCol === col)
+  );
+}
+
+function getTileColorClass(value) {
+  if (value <= 2048) return `tile-${value}`;
+  return 'tile-default';
+}
+
+function render() {
+  root.innerHTML = `
+    <div class="container">
+      <div class="header">
+        <div class="title-block">
+          <div class="title">INFINITE</div>
+          <div class="title-accent">FOLD</div>
+        </div>
+        <div class="score-block">
+          <div class="score-box">
+            <div class="score-label">SCORE</div>
+            <div class="score-value">${score}</div>
+          </div>
+          <div class="score-box">
+            <div class="score-label">BEST</div>
+            <div class="score-value">${bestScore}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="combo-bar ${comboCount === 0 ? 'hidden' : ''}">
+        <div class="combo-text">🔥 COMBO ×${comboCount > 0 ? comboCount : 1}</div>
+      </div>
+
+      <div class="board-container"></div>
+
+      ${isGameOver && !gameOverDismissed ? `
+        <div class="overlay">
+          <div class="game-over-card">
+            <div class="game-over-title">DEADLOCKED</div>
+            <div class="game-over-message">No more valid moves!</div>
+            <div class="game-over-score">Final Score: ${score}</div>
+            <div class="close-button" id="closeBtn">
+              <div class="close-button-text">✕ CLOSE</div>
+            </div>
+          </div>
+        </div>
+      ` : ''}
+
+      ${isGameOver && gameOverDismissed ? `
+        <div class="retry-bar" id="retryBtn">
+          <div class="retry-button-text">🔄 TRY AGAIN</div>
+        </div>
+      ` : ''}
+
+      <div class="instructions">
+        <div class="instruction-text">Swipe to fold • Short: 1-Row • Long: 2-Row</div>
+        <div class="tip-text">Always spawns new number after each fold</div>
+      </div>
+    </div>
+  `;
+  
+  
+  setTimeout(() => {
+    renderBoard();
+    
+    // iOS에서 버튼 터치 이벤트 직접 바인딩
+    const closeBtn = document.getElementById('closeBtn');
+    const retryBtn = document.getElementById('retryBtn');
+    
+    if (closeBtn) {
+      closeBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        dismissGameOver();
+      }, { passive: false });
+      closeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        dismissGameOver();
+      });
     }
     
-    const newBoard = board.map(row => [...row]);
-    newBoard[targetCell.row][targetCell.col] = spawnValue;
-    return newBoard;
-  }
-
-  function getValidFoldCount(board) {
-    const directions = Object.values(DIRECTIONS);
-    const depths = [1, 2];
-    let count = 0;
-
-    for (const direction of directions) {
-      for (const depth of depths) {
-        const { possible } = canFold(board, direction, depth);
-        if (possible) count++;
-      }
+    if (retryBtn) {
+      retryBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        resetGame();
+      }, { passive: false });
+      retryBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        resetGame();
+      });
     }
+  }, 0);
+}
 
-    return count;
-  }
-
-  function checkGameOver(board) {
-    return getValidFoldCount(board) === 0;
-  }
-
-  function initializeBoard() {
-    const board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(0));
-    const center = BOARD_SIZE / 2;
-    board[center - 1][center - 1] = INITIAL_VALUE;
-    board[center - 1][center] = INITIAL_VALUE;
-    board[center][center - 1] = INITIAL_VALUE;
-    board[center][center] = INITIAL_VALUE;
-    return board;
-  }
-
-  function generateStarPositions(currentBoard) {
-    const emptyCells = [];
-    for (let row = 0; row < 4; row++) {
-      for (let col = 0; col < 4; col++) {
-        if (currentBoard[row][col] === 0) {
-          emptyCells.push({ row, col });
-        }
-      }
-    }
-    if (emptyCells.length === 0) return { stars: [], grayStars: [] };
-    
-    const randomPos = emptyCells[Math.floor(Math.random() * emptyCells.length)];
-    
-    if (Math.random() <= 0.3) {
-      return { stars: [randomPos], grayStars: [] };
-    } else {
-      return { stars: [], grayStars: [randomPos] };
-    }
-  }
-
-  // React Components
-  const e = React.createElement;
-
-  function GameScreen() {
-    const [state, setState] = React.useState(gameState);
-
-    React.useEffect(() => {
-      const saved = localStorage.getItem('infiniteFoldBestScore');
-      if (saved) {
-        setState(prev => ({ ...prev, bestScore: parseInt(saved) }));
-      }
-      resetGame();
-    }, []);
-
-    function resetGame() {
-      const newBoard = initializeBoard();
-      const starResult = generateStarPositions(newBoard);
-      const newState = {
-        board: newBoard,
-        score: 0,
-        isGameOver: false,
-        gameOverDismissed: false,
-        comboCount: 0,
-        starPositions: starResult.stars,
-        grayStars: starResult.grayStars,
-        validFoldCount: getValidFoldCount(newBoard),
-      };
-      setState(newState);
-      gameState = newState;
-    }
-
-    function handleFold(direction, depth) {
-      if (state.isGameOver && !state.gameOverDismissed) return;
+function renderBoard() {
+  const container = document.querySelector('.board-container');
+  if (!container) return;
+  
+  const affectedCells = getAffectedCells();
+  
+  container.innerHTML = `
+    <div class="game-board" style="width: ${boardSize}px; height: ${boardSize}px;">
+      <div class="board-content">
+        ${Array(4).fill(null).map((_, row) =>
+          Array(4).fill(null).map((_, col) => {
+            const isAffected = affectedCells.some(c => c.row === row && c.col === col);
+            return `
+              <div class="cell ${isAffected && !activeDirection ? 'affected' : ''}" 
+                   style="width: ${cellSize}px; height: ${cellSize}px; 
+                          left: ${PADDING + col * (cellSize + GAP)}px; 
+                          top: ${PADDING + row * (cellSize + GAP)}px;">
+              </div>
+            `;
+          }).join('')
+        ).join('')}
+        
+        ${activeDirection && activeDepth ? `
+          <div class="fold-area-border" style="
+            ${activeDirection === DIRECTIONS.TOP ? `
+              top: ${PADDING}px;
+              left: ${PADDING}px;
+              right: ${PADDING}px;
+              height: ${activeDepth * cellSize + (activeDepth - 1) * GAP}px;
+            ` : ''}
+            ${activeDirection === DIRECTIONS.BOTTOM ? `
+              bottom: ${PADDING}px;
+              left: ${PADDING}px;
+              right: ${PADDING}px;
+              height: ${activeDepth * cellSize + (activeDepth - 1) * GAP}px;
+            ` : ''}
+            ${activeDirection === DIRECTIONS.LEFT ? `
+              left: ${PADDING}px;
+              top: ${PADDING}px;
+              bottom: ${PADDING}px;
+              width: ${activeDepth * cellSize + (activeDepth - 1) * GAP}px;
+            ` : ''}
+            ${activeDirection === DIRECTIONS.RIGHT ? `
+              right: ${PADDING}px;
+              top: ${PADDING}px;
+              bottom: ${PADDING}px;
+              width: ${activeDepth * cellSize + (activeDepth - 1) * GAP}px;
+            ` : ''}
+          "></div>
+        ` : ''}
+        
+        ${board.map((row, rowIndex) =>
+          row.map((value, colIndex) => {
+            if (value === 0) return '';
+            const isAffected = affectedCells.some(c => c.row === rowIndex && c.col === colIndex);
+            const isMismatch = isMismatchCell(rowIndex, colIndex);
+            const fontSize = value >= 1000 ? cellSize * 0.28 : value >= 100 ? cellSize * 0.35 : cellSize * 0.5;
+            return `
+              <div class="tile ${getTileColorClass(value)} ${isAffected ? 'affected' : ''} ${isMismatch ? 'mismatch' : ''}" 
+                   style="width: ${cellSize}px; height: ${cellSize}px;
+                          left: ${PADDING + colIndex * (cellSize + GAP)}px;
+                          top: ${PADDING + rowIndex * (cellSize + GAP)}px;
+                          font-size: ${fontSize}px;">
+                <span class="tile-value">${value}</span>
+              </div>
+            `;
+          }).join('')
+        ).join('')}
+        
+        ${preview.valid && preview.ghosts.map((ghost, index) => {
+          const fontSize = ghost.value >= 1000 ? cellSize * 0.28 : ghost.value >= 100 ? cellSize * 0.35 : cellSize * 0.5;
+          return `
+            <div class="tile ghost ${ghost.isMerge ? 'merge' : ''} ${getTileColorClass(ghost.value)}"
+                 style="width: ${cellSize}px; height: ${cellSize}px;
+                        left: ${PADDING + ghost.col * (cellSize + GAP)}px;
+                        top: ${PADDING + ghost.row * (cellSize + GAP)}px;
+                        font-size: ${fontSize}px;">
+              <span class="tile-value">${ghost.value}</span>
+              ${ghost.isMerge ? '<div class="merge-badge">×2</div>' : ''}
+            </div>
+          `;
+        }).join('')}
+      </div>
       
-      const { possible, mismatches } = canFold(state.board, direction, depth);
-      if (!possible || mismatches.length > 0) return;
-
-      const result = executeFold(state.board, direction, depth);
-      let newBoard = result.board;
-
-      let newCombo = state.comboCount;
-      if (result.mergeCount > 0) {
-        newCombo += 1;
-      } else {
-        newCombo = 0;
-      }
-
-      let starUpgraded = false;
-      if (state.starPositions.length > 0) {
-        for (const starPos of state.starPositions) {
-          const { row, col } = starPos;
-          if (newBoard[row][col] === 0) {
-            newBoard = spawnNewNumber(newBoard, { row, col });
-          } else {
-            newBoard[row][col] *= 2;
-            starUpgraded = true;
-          }
-        }
-      } else {
-        newBoard = spawnNewNumber(newBoard);
-      }
-
-      const nextStarResult = generateStarPositions(newBoard);
-      const comboBonus = newCombo > 0 ? Math.pow(2, newCombo) : 0;
-      const newScore = state.score + result.points + comboBonus;
+      ${activeDirection && !isCancelled ? `
+        <div class="arrow-overlay" style="
+          ${activeDirection === DIRECTIONS.TOP ? `
+            top: ${PADDING + (activeDepth || 1) * cellSize + ((activeDepth || 1) - 0.5) * GAP - 24}px;
+            left: 0; right: 0;
+            justify-content: center;
+          ` : ''}
+          ${activeDirection === DIRECTIONS.BOTTOM ? `
+            bottom: ${PADDING + (activeDepth || 1) * (cellSize + GAP) - GAP/2 - 24}px;
+            left: 0; right: 0;
+            justify-content: center;
+          ` : ''}
+          ${activeDirection === DIRECTIONS.LEFT ? `
+            left: ${PADDING + (activeDepth || 1) * cellSize + ((activeDepth || 1) - 0.5) * GAP - 24}px;
+            top: 0; bottom: 0;
+            justify-content: center;
+          ` : ''}
+          ${activeDirection === DIRECTIONS.RIGHT ? `
+            right: ${PADDING + (activeDepth || 1) * cellSize + ((activeDepth || 1) - 0.5) * GAP - 24}px;
+            top: 0; bottom: 0;
+            justify-content: center;
+          ` : ''}
+        ">
+          <div class="arrow-text" style="color: ${preview.valid ? '#4ecca3' : '#ff4444'}">
+            ${activeDirection === DIRECTIONS.TOP ? '▼' : ''}
+            ${activeDirection === DIRECTIONS.BOTTOM ? '▲' : ''}
+            ${activeDirection === DIRECTIONS.LEFT ? '▶' : ''}
+            ${activeDirection === DIRECTIONS.RIGHT ? '◀' : ''}
+          </div>
+        </div>
+      ` : ''}
       
-      const newValidFoldCount = getValidFoldCount(newBoard);
-      const newIsGameOver = newValidFoldCount === 0;
-      
-      const newState = {
-        ...state,
-        board: newBoard,
-        score: newScore,
-        comboCount: newCombo,
-        starPositions: nextStarResult.stars,
-        grayStars: nextStarResult.grayStars,
-        validFoldCount: newValidFoldCount,
-        isGameOver: newIsGameOver,
-        bestScore: Math.max(newScore, state.bestScore),
-      };
+      ${(isCancelled || preview.isEmpty) ? `
+        <div class="message-overlay">
+          <div class="message-text">${isCancelled ? 'CANCELLED' : 'EMPTY'}</div>
+        </div>
+      ` : ''}
 
-      setState(newState);
-      gameState = newState;
+      ${!preview.valid && !preview.isEmpty ? `
+        <div class="warning-overlay">
+          <div class="warning-text">✕ BLOCKED</div>
+        </div>
+      ` : ''}
+    </div>
+  `;
+  
+  boardElement = container.querySelector('.game-board');
+}
 
-      if (newScore > state.bestScore) {
-        localStorage.setItem('infiniteFoldBestScore', newScore);
-      }
-    }
-
-    function dismissGameOver() {
-      setState(prev => ({ ...prev, gameOverDismissed: true }));
-    }
-
-    return e('div', { style: styles.container }, [
-      e('div', { key: 'content', style: styles.contentWrapper }, [
-        e('div', { key: 'header', style: styles.header }, [
-          e('div', { key: 'title', style: styles.titleBlock }, [
-            e('div', { style: styles.title }, 'INFINITE'),
-            e('div', { style: styles.titleAccent }, 'FOLD'),
-          ]),
-          e('div', { key: 'scores', style: styles.scoreBlock }, [
-            e('div', { key: 'moves', style: [styles.scoreBox, styles.movesBox] }, [
-              e('div', { style: styles.scoreLabel }, 'Possible\nMoves'),
-              e('div', { 
-                style: [styles.scoreValue, state.validFoldCount <= 2 && styles.movesValueWarning] 
-              }, state.validFoldCount),
-            ]),
-            e('div', { key: 'score', style: styles.scoreBox }, [
-              e('div', { style: styles.scoreLabel }, 'SCORE'),
-              e('div', { style: styles.scoreValue }, state.score),
-            ]),
-            e('div', { key: 'best', style: styles.scoreBox }, [
-              e('div', { style: styles.scoreLabel }, 'BEST'),
-              e('div', { style: styles.scoreValue }, state.bestScore),
-            ]),
-          ]),
-        ]),
-      ]),
-      e(GameBoard, { 
-        key: 'board',
-        board: state.board, 
-        onFold: handleFold,
-        isGameOver: state.isGameOver,
-        starPositions: state.starPositions,
-        grayStars: state.grayStars,
-      }),
-      state.isGameOver && !state.gameOverDismissed && e(GameOverPopup, {
-        key: 'gameover',
-        score: state.score,
-        onClose: dismissGameOver,
-      }),
-      state.isGameOver && state.gameOverDismissed && e(RetryButton, {
-        key: 'retry',
-        onRetry: resetGame,
-      }),
-    ]);
-  }
-
-  function GameBoard({ board, onFold, isGameOver, starPositions, grayStars }) {
-    const boardRef = React.useRef(null);
-
-    React.useEffect(() => {
-      const boardElement = boardRef.current;
-      if (!boardElement) return;
-
-      let startX = 0, startY = 0;
-      let currentDirection = null;
-      let currentDepth = null;
-      let cancelled = false;
-
-      function handleStart(e) {
-        const touch = e.touches ? e.touches[0] : e;
-        startX = touch.clientX;
-        startY = touch.clientY;
-        currentDirection = null;
-        currentDepth = null;
-        cancelled = false;
-      }
-
-      function handleMove(e) {
-        if (!e.touches && e.buttons !== 1) return;
-        
-        const touch = e.touches ? e.touches[0] : e;
-        const deltaX = touch.clientX - startX;
-        const deltaY = touch.clientY - startY;
-        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-        
-        if (distance < SWIPE_THRESHOLD) return;
-        
-        const direction = Math.abs(deltaX) > Math.abs(deltaY) 
-          ? (deltaX > 0 ? 'right' : 'left')
-          : (deltaY > 0 ? 'bottom' : 'top');
-        
-        const depth = distance > DEPTH_THRESHOLD ? 2 : 1;
-        
-        if (distance > CANCEL_THRESHOLD) {
-          cancelled = true;
-          return;
-        }
-        
-        if (!cancelled) {
-          currentDirection = direction;
-          currentDepth = depth;
-        }
-      }
-
-      function handleEnd(e) {
-        if (!cancelled && currentDirection && currentDepth) {
-          onFold(currentDirection, currentDepth);
-        }
-        currentDirection = null;
-        currentDepth = null;
-        cancelled = false;
-      }
-
-      // Touch events
-      boardElement.addEventListener('touchstart', handleStart, { passive: false });
-      boardElement.addEventListener('touchmove', handleMove, { passive: false });
-      boardElement.addEventListener('touchend', handleEnd, { passive: false });
-      
-      // Mouse events
-      boardElement.addEventListener('mousedown', handleStart);
-      boardElement.addEventListener('mousemove', handleMove);
-      boardElement.addEventListener('mouseup', handleEnd);
-      boardElement.addEventListener('mouseleave', handleEnd);
-
-      return () => {
-        boardElement.removeEventListener('touchstart', handleStart);
-        boardElement.removeEventListener('touchmove', handleMove);
-        boardElement.removeEventListener('touchend', handleEnd);
-        boardElement.removeEventListener('mousedown', handleStart);
-        boardElement.removeEventListener('mousemove', handleMove);
-        boardElement.removeEventListener('mouseup', handleEnd);
-        boardElement.removeEventListener('mouseleave', handleEnd);
-      };
-    }, [onFold]);
-
-    const cells = [];
-    for (let row = 0; row < BOARD_SIZE; row++) {
-      for (let col = 0; col < BOARD_SIZE; col++) {
-        cells.push(e('div', { 
-          key: `cell-${row}-${col}`,
-          style: styles.cell 
-        }));
-      }
-    }
-
-    const tiles = [];
-    for (let row = 0; row < BOARD_SIZE; row++) {
-      for (let col = 0; col < BOARD_SIZE; col++) {
-        const value = board[row][col];
-        if (value !== 0) {
-          tiles.push(e('div', {
-            key: `tile-${row}-${col}`,
-            style: [styles.tile, styles[`tile-${value}`], {
-              left: `${12 + col * (80 + 8)}px`,
-              top: `${12 + row * (80 + 8)}px`,
-            }],
-          }, value));
-        }
-      }
-    }
-
-    const stars = [];
-    starPositions.forEach((star, index) => {
-      stars.push(e('div', {
-        key: `star-${index}`,
-        style: [styles.starMarker, {
-          left: `${12 + star.col * (80 + 8)}px`,
-          top: `${12 + star.row * (80 + 8)}px`,
-        }],
-      }, e('div', { style: styles.starText }, '★')));
-    });
-
-    grayStars.forEach((star, index) => {
-      stars.push(e('div', {
-        key: `gray-star-${index}`,
-        style: [styles.starMarker, styles.grayStarMarker, {
-          left: `${12 + star.col * (80 + 8)}px`,
-          top: `${12 + star.row * (80 + 8)}px`,
-        }],
-      }, e('div', { style: [styles.starText, styles.grayStarText] }, '★')));
-    });
-
-    return e('div', { 
-      ref: boardRef,
-      style: [styles.boardContainer, styles.board] 
-    }, [...cells, ...tiles, ...stars]);
-  }
-
-  function GameOverPopup({ score, onClose }) {
-    return e('div', { style: styles.overlay }, [
-      e('div', { key: 'card', style: styles.gameOverCard }, [
-        e('div', { key: 'title', style: styles.gameOverTitle }, 'DEADLOCKED'),
-        e('div', { key: 'message', style: styles.gameOverMessage }, 'No more valid moves!'),
-        e('div', { key: 'score', style: styles.gameOverScore }, `Final Score: ${score}`),
-        e('div', { 
-          key: 'close', 
-          style: styles.closeButton,
-          onClick: onClose 
-        }, e('div', { style: styles.closeButtonText }, '✕ CLOSE')),
-      ]),
-    ]);
-  }
-
-  function RetryButton({ onRetry }) {
-    return e('div', { style: styles.retrySection }, [
-      e('div', {
-        key: 'button',
-        style: styles.retryButton,
-        onClick: onRetry
-      }, [
-        e('div', { key: 'icon', style: styles.retryIcon }, '↻'),
-        e('div', { key: 'text', style: styles.retryText }, 'TRY AGAIN'),
-      ]),
-    ]);
-  }
-
-  // Styles
-  const styles = {
-    container: {
-      width: '100vw',
-      height: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      position: 'relative',
-    },
-    contentWrapper: {
-      width: '100%',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-    },
-    header: {
-      width: '100%',
-      padding: '8px 16px 12px',
-      marginBottom: '20px',
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'flex-start',
-    },
-    titleBlock: {
-      display: 'flex',
-      flexDirection: 'column',
-    },
-    title: {
-      fontSize: '48px',
-      fontWeight: 'bold',
-      color: '#776e65',
-      letterSpacing: '2px',
-      lineHeight: '32px',
-    },
-    titleAccent: {
-      fontSize: '48px',
-      fontWeight: 'bold',
-      color: '#f67c5f',
-      letterSpacing: '2px',
-      lineHeight: '32px',
-    },
-    scoreBlock: {
-      display: 'flex',
-      gap: '8px',
-    },
-    scoreBox: {
-      backgroundColor: '#bbada0',
-      padding: '8px 14px',
-      borderRadius: '8px',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      minWidth: '60px',
-      textAlign: 'center',
-    },
-    movesBox: {
-      backgroundColor: '#8f7a66',
-    },
-    scoreLabel: {
-      fontSize: '10px',
-      color: '#eee4da',
-      fontWeight: '600',
-      marginBottom: '2px',
-      lineHeight: '1.2',
-      whiteSpace: 'pre-line',
-    },
-    scoreValue: {
-      fontSize: '18px',
-      fontWeight: 'bold',
-      color: '#fff',
-    },
-    movesValueWarning: {
-      color: '#ff6b6b',
-    },
-    boardContainer: {
-      width: 'min(92vw, 380px)',
-      height: 'min(92vw, 380px)',
-      position: 'relative',
-    },
-    board: {
-      backgroundColor: '#bbada0',
-      borderRadius: '12px',
-      display: 'grid',
-      gridTemplateColumns: 'repeat(4, 1fr)',
-      gridTemplateRows: 'repeat(4, 1fr)',
-      gap: '8px',
-      padding: '12px',
-    },
-    cell: {
-      backgroundColor: 'rgba(238, 228, 218, 0.35)',
-      borderRadius: '6px',
-    },
-    tile: {
-      position: 'absolute',
-      width: '80px',
-      height: '80px',
-      borderRadius: '6px',
-      fontWeight: 'bold',
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      fontSize: '24px',
-      transition: 'all 0.15s ease-in-out',
-    },
-    'tile-2': { backgroundColor: '#eee4da', color: '#776e65' },
-    'tile-4': { backgroundColor: '#ede0c8', color: '#776e65' },
-    'tile-8': { backgroundColor: '#f2b179', color: '#f9f6f2' },
-    'tile-16': { backgroundColor: '#f59563', color: '#f9f6f2' },
-    'tile-32': { backgroundColor: '#f67c5f', color: '#f9f6f2' },
-    'tile-64': { backgroundColor: '#f65e3b', color: '#f9f6f2' },
-    'tile-128': { backgroundColor: '#edcf72', color: '#f9f6f2', fontSize: '20px' },
-    'tile-256': { backgroundColor: '#edcc61', color: '#f9f6f2', fontSize: '20px' },
-    'tile-512': { backgroundColor: '#edc850', color: '#f9f6f2', fontSize: '20px' },
-    'tile-1024': { backgroundColor: '#edc53f', color: '#f9f6f2', fontSize: '18px' },
-    'tile-2048': { backgroundColor: '#edc22e', color: '#f9f6f2', fontSize: '18px' },
-    starMarker: {
-      position: 'absolute',
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: 'transparent',
-      borderRadius: '6px',
-      pointerEvents: 'none',
-      width: '80px',
-      height: '80px',
-    },
-    starText: {
-      fontSize: '32px',
-      color: '#edc22e',
-      opacity: '0.8',
-    },
-    grayStarMarker: {
-      opacity: '0.4',
-    },
-    grayStarText: {
-      color: '#999',
-      opacity: '0.5',
-    },
-    overlay: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(255, 255, 255, 0.7)',
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      zIndex: 1000,
-    },
-    gameOverCard: {
-      backgroundColor: '#fff',
-      padding: '32px',
-      borderRadius: '16px',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
-    },
-    gameOverTitle: {
-      fontSize: '28px',
-      fontWeight: 'bold',
-      color: '#e94560',
-      marginBottom: '8px',
-    },
-    gameOverMessage: {
-      fontSize: '14px',
-      color: '#776e65',
-      marginBottom: '8px',
-    },
-    gameOverScore: {
-      fontSize: '20px',
-      fontWeight: 'bold',
-      color: '#f67c5f',
-      marginBottom: '16px',
-    },
-    closeButton: {
-      backgroundColor: '#e74c3c',
-      padding: '14px',
-      borderRadius: '8px',
-      minWidth: '140px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      cursor: 'pointer',
-    },
-    closeButtonText: {
-      color: '#fff',
-      fontWeight: 'bold',
-      fontSize: '16px',
-    },
-    retrySection: {
-      width: '100%',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginTop: '20px',
-      marginBottom: '20px',
-    },
-    retryButton: {
-      display: 'flex',
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: '#e74c3c',
-      padding: '14px 28px',
-      borderRadius: '25px',
-      gap: '8px',
-      cursor: 'pointer',
-    },
-    retryIcon: {
-      fontSize: '20px',
-      color: '#fff',
-    },
-    retryText: {
-      fontSize: '16px',
-      color: '#fff',
-      fontWeight: 'bold',
-    },
-  };
-
-  // Render app
-  ReactDOM.render(e(GameScreen), document.getElementById('root'));
-})();
+// Start the app
+init();
