@@ -171,11 +171,10 @@ function updateUI() {
 
 // Show combo popup
 function showComboPopup(combo) {
-    const container = document.getElementById('combo-container');
     const popup = document.createElement('div');
     popup.className = 'combo-popup';
     popup.textContent = `COMBO x${combo}`;
-    container.appendChild(popup);
+    document.querySelector('.container').appendChild(popup);
     
     setTimeout(() => {
         popup.remove();
