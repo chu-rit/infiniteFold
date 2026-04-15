@@ -633,6 +633,7 @@ function isAffectedCell(row, col) {
 }
 
 function isMismatchCell(row, col) {
+  if (!preview || !preview.mismatches) return false;
   return preview.mismatches.some(m => 
     (m.row === row && m.col === col) || 
     (m.targetRow === row && m.targetCol === col)
