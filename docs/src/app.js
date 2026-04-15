@@ -1,13 +1,235 @@
 // Infinite Fold - Web Version
-import { 
-  BOARD_SIZE, 
-  DIRECTIONS, 
-  initializeBoard, 
-  executeFold, 
-  getFoldPreview, 
-  spawnNewNumber, 
-  checkGameOver 
-} from './game-logic.js';
+// All code in one file to avoid module loading issues
+
+// ==================== GAME LOGIC ====================
+
+// Game Constants
+const BOARD_SIZE = 4;
+const INITIAL_VALUE = 2;
+
+const DIRECTIONS = {
+  TOP: 'top',
+  BOTTOM: 'bottom',
+  LEFT: 'left',
+  RIGHT: 'right',
+};
+
+// Initialize board with center 2x2 filled
+function initializeBoard() {
+  const board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(0));
+  const center = BOARD_SIZE / 2;
+  board[center - 1][center - 1] = INITIAL_VALUE;
+  board[center - 1][center] = INITIAL_VALUE;
+  board[center][center - 1] = INITIAL_VALUE;
+  board[center][center] = INITIAL_VALUE;
+  return board;
+}
+
+// Helper: Check if a cell is an object tile
+const getValue = (cell) => cell || 0;
+
+// Calculate symmetric target index
+function getSymmetricIndex(index, foldDepth, boardSize = BOARD_SIZE) {
+  if (foldDepth === 1) {
+    if (index === 0) return 1;
+    if (index === boardSize - 1) return boardSize - 2;
+    if (index === 1) return 0;
+    if (index === boardSize - 2) return boardSize - 1;
+    return -1;
+  }
+  if (foldDepth === 2) {
+    return boardSize - 1 - index;
+  }
+  return -1;
+}
+
+// Check if fold is valid and get moves
+function canFold(board, direction, depth) {
+  const moves = [];
+  const mismatches = [];
+
+  const validateAndAddMove = (fromRow, fromCol, toRow, toCol) => {
+    const sourceValue = getValue(board[fromRow][fromCol]);
+    if (sourceValue === 0) return;
+
+    const targetValue = getValue(board[toRow][toCol]);
+
+    if (targetValue !== 0 && targetValue !== sourceValue) {
+      mismatches.push({ 
+        row: fromRow, 
+        col: fromCol, 
+        targetRow: toRow, 
+        targetCol: toCol 
+      });
+      return;
+    }
+
+    moves.push({ 
+      from: { row: fromRow, col: fromCol }, 
+      to: { row: toRow, col: toCol }, 
+      value: sourceValue 
+    });
+  };
+
+  if (direction === DIRECTIONS.TOP) {
+    for (let row = 0; row < depth; row++) {
+      for (let col = 0; col < BOARD_SIZE; col++) {
+        const targetRow = getSymmetricIndex(row, depth);
+        if (targetRow >= 0) validateAndAddMove(row, col, targetRow, col);
+      }
+    }
+  } else if (direction === DIRECTIONS.BOTTOM) {
+    for (let row = BOARD_SIZE - 1; row >= BOARD_SIZE - depth; row--) {
+      for (let col = 0; col < BOARD_SIZE; col++) {
+        const targetRow = getSymmetricIndex(row, depth);
+        if (targetRow >= 0) validateAndAddMove(row, col, targetRow, col);
+      }
+    }
+  } else if (direction === DIRECTIONS.LEFT) {
+    for (let col = 0; col < depth; col++) {
+      for (let row = 0; row < BOARD_SIZE; row++) {
+        const targetCol = getSymmetricIndex(col, depth);
+        if (targetCol >= 0) validateAndAddMove(row, col, row, targetCol);
+      }
+    }
+  } else if (direction === DIRECTIONS.RIGHT) {
+    for (let col = BOARD_SIZE - 1; col >= BOARD_SIZE - depth; col--) {
+      for (let row = 0; row < BOARD_SIZE; row++) {
+        const targetCol = getSymmetricIndex(col, depth);
+        if (targetCol >= 0) validateAndAddMove(row, col, row, targetCol);
+      }
+    }
+  }
+
+  const hasBlocksInFoldArea = moves.length > 0;
+
+  return { 
+    possible: mismatches.length === 0 && hasBlocksInFoldArea, 
+    moves, 
+    mismatches,
+    isEmpty: !hasBlocksInFoldArea && mismatches.length === 0
+  };
+}
+
+// Execute a fold
+function executeFold(board, direction, depth) {
+  const { possible, moves, mismatches } = canFold(board, direction, depth);
+
+  if (!possible) {
+    return { board, merged: false, mergeCount: 0, points: 0, mismatches };
+  }
+
+  const preMergeValues = new Set();
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = 0; col < BOARD_SIZE; col++) {
+      const val = getValue(board[row][col]);
+      if (val !== 0) preMergeValues.add(val);
+    }
+  }
+
+  const newBoard = board.map(row => [...row]);
+  let mergeCount = 0;
+  let points = 0;
+  const mergedTargets = new Set();
+
+  const sortedMoves = [...moves].sort((a, b) => {
+    const distA = Math.min(a.from.row, a.from.col, BOARD_SIZE - 1 - a.from.row, BOARD_SIZE - 1 - a.from.col);
+    const distB = Math.min(b.from.row, b.from.col, BOARD_SIZE - 1 - b.from.row, BOARD_SIZE - 1 - b.from.col);
+    return distA - distB;
+  });
+
+  for (const move of sortedMoves) {
+    const { from, to, value } = move;
+    const targetKey = `${to.row},${to.col}`;
+
+    newBoard[from.row][from.col] = 0;
+
+    if (mergedTargets.has(targetKey)) continue;
+
+    const targetValue = getValue(newBoard[to.row][to.col]);
+
+    if (targetValue === 0) {
+      newBoard[to.row][to.col] = value;
+    } else if (targetValue === value) {
+      newBoard[to.row][to.col] = value * 2;
+      mergedTargets.add(targetKey);
+      mergeCount++;
+      points += value * 2;
+    }
+  }
+
+  return { 
+    board: newBoard, 
+    merged: mergeCount > 0, 
+    mergeCount, 
+    points, 
+    mismatches: [],
+    preMergeValues: Array.from(preMergeValues)
+  };
+}
+
+// Get preview for ghost tiles
+function getFoldPreview(board, direction, depth) {
+  const { possible, moves, mismatches, isEmpty } = canFold(board, direction, depth);
+
+  if (!possible) {
+    return { valid: false, ghosts: [], mismatches, isEmpty };
+  }
+
+  const ghosts = moves.map(move => ({
+    row: move.to.row,
+    col: move.to.col,
+    value: move.value,
+    isMerge: getValue(board[move.to.row][move.to.col]) === move.value && getValue(board[move.to.row][move.to.col]) !== 0
+  }));
+
+  return { valid: true, ghosts, mismatches: [], isEmpty: false };
+}
+
+// Spawn new number
+function spawnNewNumber(board, preMergeValues) {
+  const emptyCells = [];
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = 0; col < BOARD_SIZE; col++) {
+      if (getValue(board[row][col]) === 0) emptyCells.push({ row, col });
+    }
+  }
+
+  if (emptyCells.length === 0) return board;
+
+  const randomCell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+  const newBoard = board.map(row => [...row]);
+  
+  let spawnValue = 2;
+  if (preMergeValues && preMergeValues.length > 0) {
+    spawnValue = preMergeValues[Math.floor(Math.random() * preMergeValues.length)];
+  } else {
+    const existing = new Set();
+    board.forEach(row => row.forEach(c => { if(getValue(c)) existing.add(getValue(c)) }));
+    const vals = Array.from(existing);
+    if (vals.length > 0) spawnValue = vals[Math.floor(Math.random() * vals.length)];
+  }
+  
+  newBoard[randomCell.row][randomCell.col] = spawnValue;
+  return newBoard;
+}
+
+// Check game over
+function checkGameOver(board) {
+  const directions = Object.values(DIRECTIONS);
+  const depths = [1, 2];
+
+  for (const direction of directions) {
+    for (const depth of depths) {
+      const { possible } = canFold(board, direction, depth);
+      if (possible) return false;
+    }
+  }
+
+  return true;
+}
+
+// ==================== APP LOGIC ====================
 
 // Constants
 const SWIPE_THRESHOLD = 20;
@@ -23,6 +245,8 @@ let bestScore = localStorage.getItem('infiniteFoldBestScore') || 0;
 let isGameOver = false;
 let gameOverDismissed = false;
 let comboCount = 0;
+let particles = [];
+let particleIdCounter = 0;
 
 // Preview State
 let activeDirection = null;
@@ -50,6 +274,12 @@ function init() {
   setupEventListeners();
   updateBoardSize();
   window.addEventListener('resize', updateBoardSize);
+  
+  // 컨텍스트 메뉴 비활성화
+  document.addEventListener('contextmenu', function(e) {
+    e.preventDefault();
+    return false;
+  }, true);
 }
 
 function updateBoardSize() {
@@ -83,6 +313,22 @@ function dismissGameOver() {
   render();
 }
 
+// Combo particle creation
+function createComboParticles() {
+  const colors = comboCount >= 3 ? ['#e74c3c'] : ['#f67c5f'];
+  const newParticles = Array.from({ length: 8 }).map((_, i) => ({
+    id: ++particleIdCounter,
+    color: colors[i % colors.length],
+    angle: (i * 45) * (Math.PI / 180),
+    distance: 80 + Math.random() * 40
+  }));
+  particles = [...particles, ...newParticles];
+  
+  setTimeout(() => {
+    particles = particles.filter(p => !newParticles.find(np => np.id === p.id));
+  }, 1000);
+}
+
 function handleFold(direction, depth) {
   const result = executeFold(board, direction, depth);
   
@@ -90,23 +336,31 @@ function handleFold(direction, depth) {
     return { valid: false, mismatches: result.mismatches };
   }
 
-  // Game over state - only provide feedback, don't change state
   if (isGameOver) {
     return { valid: true, mergeCount: result.mergeCount, gameOver: true };
   }
 
   let newBoard = result.board;
+  let newCombo = comboCount;
 
   if (result.mergeCount > 0) {
-    comboCount += 1;
+    newCombo += 1;
+    comboCount = newCombo;
+    createComboParticles();
   } else {
+    newCombo = 0;
     comboCount = 0;
   }
-  newBoard = spawnNewNumber(newBoard);
+  
+  // 3콤보 이상일 때는 블록 생성 안 함
+  if (newCombo < 3) {
+    newBoard = spawnNewNumber(newBoard, result.preMergeValues);
+  }
 
-  score += result.points;
-  if (score > bestScore) {
-    bestScore = score;
+  const newScore = score + result.points;
+  score = newScore;
+  if (newScore > bestScore) {
+    bestScore = newScore;
     localStorage.setItem('infiniteFoldBestScore', bestScore);
   }
 
@@ -152,14 +406,12 @@ function getDepthFromOffset(dx, dy, startX, startY) {
 }
 
 function setupEventListeners() {
-  // Pointer Events API 사용 (iOS 13+, 더 안정적)
   if (window.PointerEvent) {
     document.addEventListener('pointerdown', handlePointerDown, { passive: false });
     document.addEventListener('pointermove', handlePointerMove, { passive: false });
     document.addEventListener('pointerup', handlePointerUp, { passive: false });
     document.addEventListener('pointercancel', handlePointerUp, { passive: false });
   } else {
-    // Fallback for old browsers
     document.addEventListener('touchstart', handleTouchStart, { passive: false });
     document.addEventListener('touchmove', handleTouchMove, { passive: false });
     document.addEventListener('touchend', handleTouchEnd, { passive: false });
@@ -171,18 +423,14 @@ function setupEventListeners() {
 }
 
 function handleTouchStart(e) {
-  // 보드 요소가 없으면 리턴
   if (!boardElement) return;
-  // 멀티터치 무시
   if (e.touches.length !== 1) return;
   
   const touch = e.touches[0];
   const rect = boardElement.getBoundingClientRect();
-  // 보드 영역 내에서만 시작
   if (touch.clientX < rect.left || touch.clientX > rect.right ||
       touch.clientY < rect.top || touch.clientY > rect.bottom) return;
   
-  // iOS Safari에서는 touchstart preventDefault 하지 않음
   startDrag(touch.clientX, touch.clientY);
 }
 
@@ -205,7 +453,6 @@ function startDrag(x, y) {
 
 function handleTouchMove(e) {
   if (!isDragging) return;
-  // 첫 번째 터치 포인트 사용
   const touch = e.touches[0];
   if (!touch) return;
   
@@ -248,7 +495,6 @@ function handleDragMove(x, y) {
   }
 }
 
-// Pointer Events handlers (iOS 13+)
 function handlePointerDown(e) {
   if (!boardElement) return;
   const rect = boardElement.getBoundingClientRect();
@@ -289,7 +535,6 @@ function handlePointerUp(e) {
   render();
 }
 
-// Touch fallback (old iOS)
 function handleTouchEnd(e) {
   if (!isDragging) return;
   isDragging = false;
@@ -320,13 +565,7 @@ function handleMouseUp(e) {
 }
 
 function handleDragEnd() {
-  console.log('handleDragEnd called');
-  console.log('currentTranslate:', currentTranslateX, currentTranslateY);
-  console.log('startPosition:', startPosition.x, startPosition.y);
-  
-  // 취소된 경우
   if (isCancelled) {
-    console.log('cancelled - resetting');
     activeDirection = null;
     activeDepth = null;
     isCancelled = false;
@@ -337,15 +576,10 @@ function handleDragEnd() {
     return;
   }
   
-  // 드래그 거리가 충분하지 않으면 무시
   const direction = getDirectionFromOffset(currentTranslateX, currentTranslateY);
   const depth = getDepthFromOffset(currentTranslateX, currentTranslateY, startPosition.x, startPosition.y);
   
-  console.log('direction:', direction, 'depth:', depth);
-  
-  // 유효하지 않은 방향/깊이면 무시
   if (!direction || !depth || depth === 'cancel') {
-    console.log('invalid direction/depth - resetting only');
     activeDirection = null;
     activeDepth = null;
     preview = { valid: true, ghosts: [], mismatches: [] };
@@ -357,12 +591,10 @@ function handleDragEnd() {
   
   const previewResult = getFoldPreview(board, direction, depth);
   
-  // 유효한 폴드 실행
   if (previewResult.valid && !previewResult.isEmpty) {
     handleFold(direction, depth);
   }
   
-  // 상태 초기화
   activeDirection = null;
   activeDepth = null;
   isCancelled = false;
@@ -413,13 +645,71 @@ function getTileColorClass(value) {
 }
 
 function render() {
+  const comboBurstStyle = comboCount > 1 ? `
+    <style>
+      @keyframes comboBurst {
+        0% { transform: scale(0) rotate(-10deg); opacity: 1; }
+        50% { transform: scale(1.2) rotate(0deg); }
+        100% { transform: scale(1) rotate(0deg); opacity: 0; }
+      }
+      @keyframes particle {
+        0% { transform: translate(0, 0) scale(1); opacity: 1; }
+        100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+      }
+      .combo-burst {
+        animation: comboBurst 1.1s ease-out forwards;
+      }
+      .particle {
+        animation: particle 1s ease-out forwards;
+      }
+    </style>
+  ` : '';
+  
+  const comboBurstHTML = comboCount > 1 ? `
+    <div class="combo-burst-container">
+      <div class="combo-burst ${comboCount >= 3 ? 'special' : ''}">
+        <div class="combo-label">COMBO</div>
+        <div class="combo-number-row">
+          <span class="combo-x">×</span>
+          <span class="combo-number ${comboCount >= 3 ? 'special' : ''}">${comboCount}</span>
+        </div>
+      </div>
+    </div>
+  ` : '';
+  
+  const particlesHTML = particles.map(p => {
+    const tx = Math.cos(p.angle) * p.distance;
+    const ty = Math.sin(p.angle) * p.distance;
+    return `
+      <div class="particle" style="
+        position: absolute;
+        width: 8px;
+        height: 8px;
+        background-color: ${p.color};
+        border-radius: 50%;
+        left: 50%;
+        top: 35%;
+        --tx: ${tx}px;
+        --ty: ${ty}px;
+      "></div>
+    `;
+  }).join('');
+
   root.innerHTML = `
     <div class="container">
+      ${comboBurstStyle}
+      
+      <div class="combo-overlay" style="pointer-events: none;">
+        ${particlesHTML}
+        ${comboBurstHTML}
+      </div>
+
       <div class="header">
         <div class="title-block">
           <div class="title">INFINITE</div>
           <div class="title-accent">FOLD</div>
         </div>
+        
         <div class="score-block">
           <div class="score-box">
             <div class="score-label">SCORE</div>
@@ -430,10 +720,6 @@ function render() {
             <div class="score-value">${bestScore}</div>
           </div>
         </div>
-      </div>
-
-      <div class="combo-bar ${comboCount === 0 ? 'hidden' : ''}">
-        <div class="combo-text">🔥 COMBO ×${comboCount > 0 ? comboCount : 1}</div>
       </div>
 
       <div class="board-container"></div>
@@ -464,11 +750,9 @@ function render() {
     </div>
   `;
   
-  
   setTimeout(() => {
     renderBoard();
     
-    // iOS에서 버튼 터치 이벤트 직접 바인딩
     const closeBtn = document.getElementById('closeBtn');
     const retryBtn = document.getElementById('retryBtn');
     
@@ -629,5 +913,4 @@ function renderBoard() {
   boardElement = container.querySelector('.game-board');
 }
 
-// Start the app
 init();

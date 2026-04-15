@@ -52,8 +52,10 @@
     .header {
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: flex-start;
       padding: 16px;
+      padding-top: 8px;
+      padding-bottom: 12px;
     }
     
     .title-block {
@@ -63,16 +65,18 @@
     
     .title {
       font-size: 28px;
-      font-weight: bold;
+      font-weight: 900;
       color: #776e65;
-      line-height: 1;
+      letter-spacing: 2px;
+      line-height: 32px;
     }
     
     .title-accent {
       font-size: 28px;
-      font-weight: bold;
-      color: #f67c5f;
-      line-height: 1;
+      font-weight: 900;
+      color: #f65e3b;
+      letter-spacing: 2px;
+      line-height: 32px;
     }
     
     .score-block {
@@ -82,8 +86,8 @@
     
     .score-box {
       background-color: #bbada0;
-      padding: 8px 16px;
-      border-radius: 6px;
+      padding: 8px 14px;
+      border-radius: 8px;
       text-align: center;
       min-width: 60px;
     }
@@ -92,6 +96,7 @@
       font-size: 10px;
       color: #eee4da;
       font-weight: 600;
+      margin-bottom: 2px;
     }
     
     .score-value {
@@ -100,23 +105,72 @@
       color: #fff;
     }
     
-    /* Combo Bar */
-    .combo-bar {
-      background-color: #f67c5f;
-      margin: 0 16px 8px;
-      padding: 8px;
-      border-radius: 20px;
-      text-align: center;
+    /* Combo Overlay */
+    .combo-overlay {
+      position: absolute;
+      top: 35%;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      pointer-events: none;
     }
     
-    .combo-bar.hidden {
-      display: none;
+    .combo-burst-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
     
-    .combo-text {
+    .combo-burst {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    .combo-burst.special {
+    }
+    
+    .combo-label {
       color: #fff;
-      font-weight: bold;
-      font-size: 14px;
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    }
+    
+    .combo-number-row {
+      display: flex;
+      align-items: flex-end;
+      margin-top: -10px;
+    }
+    
+    .combo-x {
+      color: #fff;
+      font-size: 40px;
+      font-weight: 900;
+      margin-bottom: 8px;
+      margin-right: 4px;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    }
+    
+    .combo-number {
+      color: #fff;
+      font-size: 80px;
+      font-weight: 900;
+      line-height: 88px;
+      font-style: italic;
+      text-shadow: 4px 4px 6px rgba(0,0,0,0.5);
+    }
+    
+    .combo-number.special {
+      color: #ffeb3b;
+      font-size: 100px;
+      line-height: 110px;
+      text-shadow: 4px 4px 6px rgba(231, 76, 60, 0.8);
     }
     
     /* Board Container */
@@ -135,27 +189,16 @@
       background-color: #bbada0;
       border-radius: 12px;
       overflow: hidden;
-      touch-action: pan-x pan-y;
-      -webkit-touch-callout: none;
-      -webkit-user-select: none;
-      -moz-user-select: none;
-      -ms-user-select: none;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-      cursor: pointer;
-      pointer-events: auto;
-      transform: translateZ(0);
     }
     
     .board-content {
       position: absolute;
       top: 0;
       left: 0;
-      width: 100%;
-      height: 100%;
+      right: 0;
+      bottom: 0;
     }
     
-    /* Cells */
     .cell {
       position: absolute;
       background-color: rgba(238, 228, 218, 0.35);
@@ -163,16 +206,15 @@
     }
     
     .cell.affected {
-      border: 3px solid #edc22e;
       background-color: transparent;
+      border: 3px solid #edc22e;
     }
     
-    /* Fold Area Border */
     .fold-area-border {
       position: absolute;
       border: 3px solid #edc22e;
       border-radius: 6px;
-      pointer-events: none;
+      background-color: transparent;
     }
     
     /* Tiles */
@@ -183,45 +225,52 @@
       align-items: center;
       border-radius: 6px;
       font-weight: bold;
-      transition: transform 0.15s ease;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-      pointer-events: none;
-      -webkit-touch-callout: none;
-      -webkit-user-select: none;
-      user-select: none;
-    }
-    
-    .tile.mismatch {
-      background-color: #e94560 !important;
-    }
-    
-    .tile.affected {
-      border: 3px solid #edc22e;
-    }
-    
-    .tile.ghost {
-      opacity: 0.4;
-    }
-    
-    .tile.ghost.merge {
-      opacity: 0.8;
+      transition: transform 0.1s ease;
     }
     
     .tile-value {
-      color: inherit;
+      pointer-events: none;
+    }
+    
+    .tile.ghost {
+      opacity: 0.5;
+    }
+    
+    .tile.merge {
+      opacity: 0.7;
+    }
+    
+    .tile.mismatch {
+      opacity: 0.5;
+      background-color: #ff4444 !important;
+    }
+    
+    .tile-affected {
+      opacity: 0.8;
     }
     
     .merge-badge {
       position: absolute;
-      top: 2px;
-      right: 2px;
-      background-color: #4ecca3;
-      border-radius: 8px;
-      padding: 2px 6px;
+      bottom: 2px;
+      right: 4px;
       font-size: 10px;
       color: #fff;
       font-weight: bold;
     }
+    
+    /* Tile Colors */
+    .tile-2 { background-color: #eee4da; color: #776e65; }
+    .tile-4 { background-color: #ede0c8; color: #776e65; }
+    .tile-8 { background-color: #f2b179; color: #f9f6f2; }
+    .tile-16 { background-color: #f59563; color: #f9f6f2; }
+    .tile-32 { background-color: #f67c5f; color: #f9f6f2; }
+    .tile-64 { background-color: #f65e3b; color: #f9f6f2; }
+    .tile-128 { background-color: #edcf72; color: #f9f6f2; }
+    .tile-256 { background-color: #edcc61; color: #f9f6f2; }
+    .tile-512 { background-color: #edc850; color: #f9f6f2; }
+    .tile-1024 { background-color: #edc53f; color: #f9f6f2; }
+    .tile-2048 { background-color: #edc22e; color: #f9f6f2; }
+    .tile-default { background-color: #3c3a32; color: #f9f6f2; }
     
     /* Arrow Overlay */
     .arrow-overlay {
@@ -230,37 +279,12 @@
       justify-content: center;
       align-items: center;
       pointer-events: none;
-      z-index: 50;
     }
     
     .arrow-text {
       font-size: 32px;
       font-weight: bold;
       text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
-    }
-    
-    /* Warning Overlay */
-    .warning-overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: rgba(255, 100, 100, 0.2);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      border-radius: 12px;
-      pointer-events: none;
-    }
-    
-    .warning-text {
-      color: #ff4444;
-      font-weight: bold;
-      font-size: 24px;
-      background-color: rgba(255,255,255,0.9);
-      padding: 10px 20px;
-      border-radius: 8px;
     }
     
     /* Message Overlay */
@@ -275,7 +299,6 @@
       justify-content: center;
       align-items: center;
       border-radius: 12px;
-      pointer-events: none;
     }
     
     .message-text {
@@ -287,9 +310,32 @@
       border-radius: 8px;
     }
     
-    /* Game Over Popup */
+    /* Warning Overlay */
+    .warning-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(255, 100, 100, 0.2);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      border-radius: 12px;
+    }
+    
+    .warning-text {
+      color: #ff4444;
+      font-weight: bold;
+      font-size: 24px;
+      background-color: rgba(255,255,255,0.9);
+      padding: 10px 20px;
+      border-radius: 8px;
+    }
+    
+    /* Overlay */
     .overlay {
-      position: fixed;
+      position: absolute;
       top: 0;
       left: 0;
       right: 0;
@@ -305,9 +351,11 @@
       background-color: #fff;
       padding: 32px;
       border-radius: 16px;
-      text-align: center;
-      min-width: 280px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 260px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
     
     .game-over-title {
@@ -334,12 +382,10 @@
       background-color: #8f7a66;
       padding: 14px 40px;
       border-radius: 8px;
-      cursor: pointer;
-      display: inline-block;
-    }
-    
-    .close-button:hover {
-      background-color: #7f6a56;
+      min-width: 140px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
     
     .close-button-text {
@@ -351,15 +397,12 @@
     /* Retry Bar */
     .retry-bar {
       background-color: #f65e3b;
-      margin: 0 16px 16px;
+      margin: 0 16px 16px 16px;
       padding: 14px;
       border-radius: 12px;
-      text-align: center;
-      cursor: pointer;
-    }
-    
-    .retry-bar:hover {
-      background-color: #e54e2b;
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
     
     .retry-button-text {
@@ -370,62 +413,28 @@
     
     /* Instructions */
     .instructions {
-      padding: 12px 16px 24px;
-      text-align: center;
+      padding: 12px 16px 24px 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
     
     .instruction-text {
       font-size: 13px;
       color: #776e65;
+      text-align: center;
+      margin-bottom: 4px;
     }
     
     .tip-text {
       font-size: 12px;
-      color: #8f7a66;
-      margin-top: 4px;
+      color: #f65e3b;
+      text-align: center;
     }
-    
-    /* Tile colors */
-    .tile-2 { background-color: #eee4da; color: #776e65; }
-    .tile-4 { background-color: #ede0c8; color: #776e65; }
-    .tile-8 { background-color: #f2b179; color: #f9f6f2; }
-    .tile-16 { background-color: #f59563; color: #f9f6f2; }
-    .tile-32 { background-color: #f67c5f; color: #f9f6f2; }
-    .tile-64 { background-color: #f65e3b; color: #f9f6f2; }
-    .tile-128 { background-color: #edcf72; color: #f9f6f2; }
-    .tile-256 { background-color: #edcc61; color: #f9f6f2; }
-    .tile-512 { background-color: #edc850; color: #f9f6f2; }
-    .tile-1024 { background-color: #edc53f; color: #f9f6f2; }
-    .tile-2048 { background-color: #edc22e; color: #f9f6f2; }
-    .tile-default { background-color: #3c3a32; color: #f9f6f2; }
   </style>
 </head>
 <body>
   <div id="root"></div>
-  <script type="module" src="src/app.js"></script>
-  <script>
-    // 컨텍스트 메뉴 완전 비활성화
-    document.addEventListener('contextmenu', function(e) {
-      e.preventDefault();
-      return false;
-    }, true);
-    
-    // 길게 누르기 메뉴 차단
-    document.addEventListener('touchstart', function(e) {
-      if (e.touches.length > 1) {
-        e.preventDefault();
-      }
-    }, { passive: false });
-    
-    // 더블탭 줌 차단
-    let lastTouchEnd = 0;
-    document.addEventListener('touchend', function(e) {
-      const now = Date.now();
-      if (now - lastTouchEnd <= 300) {
-        e.preventDefault();
-      }
-      lastTouchEnd = now;
-    }, false);
-  </script>
+  <script src="src/app.js"></script>
 </body>
 </html>
