@@ -792,8 +792,9 @@ function renderBoard() {
         ${Array(4).fill(null).map((_, row) =>
           Array(4).fill(null).map((_, col) => {
             const isAffected = affectedCells.some(c => c.row === row && c.col === col);
+            const affectedClass = isAffected && !activeDirection ? 'affected' : '';
             return `
-              <div class="cell ${isAffected && !activeDirection ? 'affected' : ''}" 
+              <div class="cell ${affectedClass}" 
                    style="width: ${cellSize}px; height: ${cellSize}px; 
                           left: ${PADDING + col * (cellSize + GAP)}px; 
                           top: ${PADDING + row * (cellSize + GAP)}px;">
@@ -834,11 +835,13 @@ function renderBoard() {
         ${board.map((row, rowIndex) =>
           row.map((value, colIndex) => {
             if (value === 0) return '';
-            const isAffected = affectedCells.some(c => c.row === rowIndex && c.col === colIndex);
-            const isMismatch = isMismatchCell(rowIndex, colIndex);
+            const isAffectedTile = affectedCells.some(c => c.row === rowIndex && c.col === colIndex);
+            const isMismatchTile = isMismatchCell(rowIndex, colIndex);
             const fontSize = value >= 1000 ? cellSize * 0.28 : value >= 100 ? cellSize * 0.35 : cellSize * 0.5;
+            const affectedTileClass = isAffectedTile ? 'affected' : '';
+            const mismatchClass = isMismatchTile ? 'mismatch' : '';
             return `
-              <div class="tile ${getTileColorClass(value)} ${isAffected ? 'affected' : ''} ${isMismatch ? 'mismatch' : ''}" 
+              <div class="tile ${getTileColorClass(value)} ${affectedTileClass} ${mismatchClass}" 
                    style="width: ${cellSize}px; height: ${cellSize}px;
                           left: ${PADDING + colIndex * (cellSize + GAP)}px;
                           top: ${PADDING + rowIndex * (cellSize + GAP)}px;
@@ -851,14 +854,16 @@ function renderBoard() {
         
         ${preview && preview.valid && preview.ghosts.map((ghost, index) => {
           const fontSize = ghost.value >= 1000 ? cellSize * 0.28 : ghost.value >= 100 ? cellSize * 0.35 : cellSize * 0.5;
+          const mergeClass = ghost.isMerge ? 'merge' : '';
+          const mergeBadge = ghost.isMerge ? '<div class="merge-badge">×2</div>' : '';
           return `
-            <div class="tile ghost ${ghost.isMerge ? 'merge' : ''} ${getTileColorClass(ghost.value)}"
+            <div class="tile ghost ${mergeClass} ${getTileColorClass(ghost.value)}"
                  style="width: ${cellSize}px; height: ${cellSize}px;
                         left: ${PADDING + ghost.col * (cellSize + GAP)}px;
                         top: ${PADDING + ghost.row * (cellSize + GAP)}px;
                         font-size: ${fontSize}px;">
               <span class="tile-value">${ghost.value}</span>
-              ${ghost.isMerge ? '<div class="merge-badge">×2</div>' : ''}
+              ${mergeBadge}
             </div>
           `;
         }).join('')}
@@ -887,11 +892,8 @@ function renderBoard() {
             justify-content: center;
           ` : ''}
         ">
-          <div class="arrow-text" style="color: ${preview && preview.valid ? '#4ecca3' : '#ff4444'}">
-            ${activeDirection === DIRECTIONS.TOP ? '▼' : ''}
-            ${activeDirection === DIRECTIONS.BOTTOM ? '▲' : ''}
-            ${activeDirection === DIRECTIONS.LEFT ? '▶' : ''}
-            ${activeDirection === DIRECTIONS.RIGHT ? '◀' : ''}
+          <div class="arrow-text" style="color: ${(preview && preview.valid) ? '#4ecca3' : '#ff4444'}">
+            ${activeDirection === DIRECTIONS.TOP ? '▼' : activeDirection === DIRECTIONS.BOTTOM ? '▲' : activeDirection === DIRECTIONS.LEFT ? '▶' : '◀'}
           </div>
         </div>
       ` : ''}
