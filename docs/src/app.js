@@ -896,13 +896,13 @@ function renderBoard() {
         </div>
       ` : ''}
       
-      ${(isCancelled || preview.isEmpty) ? `
+      ${(isCancelled || (preview && preview.isEmpty)) ? `
         <div class="message-overlay">
           <div class="message-text">${isCancelled ? 'CANCELLED' : 'EMPTY'}</div>
         </div>
       ` : ''}
 
-      ${!preview.valid && !preview.isEmpty ? `
+      ${preview && !preview.valid && !preview.isEmpty ? `
         <div class="warning-overlay">
           <div class="warning-text">✕ BLOCKED</div>
         </div>
