@@ -158,7 +158,7 @@ function getFoldPreview(board, direction, depth) {
   return { valid: true, ghosts, mismatches: [], isEmpty: false };
 }
 
-// Spawn new number
+// Spawn new number - A 방식: 접은 후 보드의 남은 값들 중에서만 선택
 function spawnNewNumber(board) {
   const emptyCells = [];
   
@@ -174,24 +174,44 @@ function spawnNewNumber(board) {
 
   const randomCell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
   const newBoard = board.map(row => [...row]);
-  newBoard[randomCell.row][randomCell.col] = 2;
+  
+  // 숫자 선택 로직 - 접은 후 보드의 남은 값들 중에서만 선택
+  const existing = new Set();
+  board.forEach(row => row.forEach(c => { 
+    const val = c;
+    if(val) existing.add(val); 
+  }));
+  const vals = Array.from(existing);
+  
+  let spawnValue = 2;
+  if (vals.length > 0) {
+    spawnValue = vals[Math.floor(Math.random() * vals.length)];
+  }
+  
+  newBoard[randomCell.row][randomCell.col] = spawnValue;
 
   return newBoard;
 }
 
-// Check game over
-function checkGameOver(board) {
+// Get count of valid fold moves (0 = game over)
+function getValidFoldCount(board) {
   const directions = Object.values(DIRECTIONS);
   const depths = [1, 2];
+  let count = 0;
 
   for (const direction of directions) {
     for (const depth of depths) {
       const { possible } = canFold(board, direction, depth);
-      if (possible) return false;
+      if (possible) count++;
     }
   }
 
-  return true;
+  return count;
+}
+
+// Check game over - for backward compatibility
+function checkGameOver(board) {
+  return getValidFoldCount(board) === 0;
 }
 
 // Initialize board with center 2x2 filled

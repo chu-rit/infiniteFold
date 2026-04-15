@@ -171,7 +171,7 @@ export function getFoldPreview(board, direction, depth) {
   return { valid: true, ghosts, mismatches: [], isEmpty: false };
 }
 
-// Spawn new number
+// Spawn new number - A 방식: 접은 후 보드의 남은 값들 중에서만 선택
 export function spawnNewNumber(board) {
   const emptyCells = [];
   
@@ -187,7 +187,21 @@ export function spawnNewNumber(board) {
 
   const randomCell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
   const newBoard = board.map(row => [...row]);
-  newBoard[randomCell.row][randomCell.col] = 2;
+  
+  // 숫자 선택 로직 - 접은 후 보드의 남은 값들 중에서만 선택
+  const existing = new Set();
+  board.forEach(row => row.forEach(c => { 
+    const val = c;
+    if(val) existing.add(val); 
+  }));
+  const vals = Array.from(existing);
+  
+  let spawnValue = 2;
+  if (vals.length > 0) {
+    spawnValue = vals[Math.floor(Math.random() * vals.length)];
+  }
+  
+  newBoard[randomCell.row][randomCell.col] = spawnValue;
 
   return newBoard;
 }

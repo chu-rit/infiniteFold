@@ -6,7 +6,7 @@ import {
   executeFold, 
   getFoldPreview, 
   spawnNewNumber, 
-  checkGameOver 
+  checkGameOver
 } from './game-logic.js';
 
 // Constants
@@ -200,6 +200,17 @@ function handleMouseMove(e) {
 }
 
 function handleDragMove(x, y) {
+  // 보드 경계 체크 - 보드 밖으로 나가면 드래그 취소
+  const rect = boardElement.getBoundingClientRect();
+  if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+    isCancelled = true;
+    activeDirection = null;
+    activeDepth = null;
+    preview = { valid: true, ghosts: [], mismatches: [] };
+    renderBoard();
+    return;
+  }
+  
   currentTranslateX = x - dragStartX;
   currentTranslateY = y - dragStartY;
   
@@ -358,11 +369,7 @@ function render() {
         </div>
       ` : ''}
 
-      <div class="instructions">
-        <div class="instruction-text">Swipe to fold • Short: 1-Row • Long: 2-Row</div>
-        <div class="tip-text">Always spawns new number after each fold</div>
-      </div>
-    </div>
+          </div>
   `;
   
   window.resetGame = resetGame;

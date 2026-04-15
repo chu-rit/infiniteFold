@@ -138,16 +138,7 @@ export default function GameScreen() {
         </View>
       )}
 
-      {/* Instructions */}
-      <View style={styles.instructions}>
-        <Text style={styles.instructionText}>
-          Swipe to fold • Short: 1-Row • Long: 2-Row
-        </Text>
-        <Text style={styles.tipText}>
-          Always spawns new number after each fold
-        </Text>
-      </View>
-    </SafeAreaView>
+          </SafeAreaView>
   );
 }
 
