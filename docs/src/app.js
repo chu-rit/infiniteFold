@@ -270,9 +270,9 @@ let cellSize = 0;
 
 // Initialize
 function init() {
-  updateBoardSize();
   render();
   setupEventListeners();
+  updateBoardSize();
   window.addEventListener('resize', updateBoardSize);
   
   // 컨텍스트 메뉴 비활성화
@@ -782,7 +782,7 @@ function render() {
 
 function renderBoard() {
   const container = document.querySelector('.board-container');
-  if (!container) return;
+  if (!container || cellSize === 0) return;
   
   const affectedCells = getAffectedCells();
   
