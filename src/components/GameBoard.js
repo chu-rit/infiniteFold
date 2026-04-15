@@ -12,13 +12,14 @@ const CANCEL_THRESHOLD = 180; // Swipe beyond board size to cancel
 const GAP = 8;
 const PADDING = 12;
 
-export function GameBoard({ board, size, onFold, isGameOver }) {
+export function GameBoard({ board, size, onFold, isGameOver, starPositions, grayStars }) {
   const [preview, setPreview] = useState({ valid: true, ghosts: [], mismatches: [] });
   const [activeDirection, setActiveDirection] = useState(null);
   const [activeDepth, setActiveDepth] = useState(null);
   const [selectedTile, setSelectedTile] = useState(null); // {row, col}
   const [isCancelled, setIsCancelled] = useState(false);
-  
+  const isCancelledRef = useRef(false);
+
   // Track touch start position for depth determination
   const startPositionRef = useRef({ x: 0, y: 0 });
 
@@ -31,10 +32,6 @@ export function GameBoard({ board, size, onFold, isGameOver }) {
     if (Math.max(absDx, absDy) < SWIPE_THRESHOLD) return null;
     
     // Swipe direction = fold edge
-    // RIGHT→LEFT swipe (dx < 0) → fold RIGHT edge → blocks move LEFT
-    // LEFT→RIGHT swipe (dx > 0) → fold LEFT edge → blocks move RIGHT
-    // UP→DOWN swipe (dy > 0) → fold TOP edge → blocks move DOWN
-    // DOWN→UP swipe (dy < 0) → fold BOTTOM edge → blocks move UP
     if (absDx > absDy) {
       return dx > 0 ? DIRECTIONS.LEFT : DIRECTIONS.RIGHT;
     }
@@ -62,8 +59,6 @@ export function GameBoard({ board, size, onFold, isGameOver }) {
     // Determine base depth from start position
     const baseDepth = isCenterStart(startX, startY) ? 2 : 1;
     
-    // For outer starts: short swipe = 1, long swipe = 2
-    // For center starts: always 2 (unless cancelled)
     if (baseDepth === 2) return 2;
     
     // Outer start: check if long enough for 2-row fold
@@ -77,6 +72,7 @@ export function GameBoard({ board, size, onFold, isGameOver }) {
     .onBegin((event) => {
       // Store starting position relative to board
       startPositionRef.current = { x: event.x, y: event.y };
+      isCancelledRef.current = false;
       setIsCancelled(false);
     })
     .onUpdate((event) => {
@@ -93,9 +89,12 @@ export function GameBoard({ board, size, onFold, isGameOver }) {
         startPositionRef.current.y
       );
       
-      // Check for cancellation
-      if (depth === 'cancel') {
-        setIsCancelled(true);
+      // Check for cancellation - once cancelled, stay cancelled until gesture ends
+      if (depth === 'cancel' || isCancelledRef.current) {
+        if (!isCancelledRef.current) {
+          isCancelledRef.current = true;
+          setIsCancelled(true);
+        }
         setActiveDirection(null);
         setActiveDepth(null);
         setPreview({ valid: true, ghosts: [], mismatches: [] });
@@ -115,9 +114,10 @@ export function GameBoard({ board, size, onFold, isGameOver }) {
       }
     })
     .onEnd((event) => {
-      if (isCancelled) {
+      if (isCancelledRef.current) {
         setActiveDirection(null);
         setActiveDepth(null);
+        isCancelledRef.current = false;
         setIsCancelled(false);
         setPreview({ valid: true, ghosts: [], mismatches: [] });
         return;
@@ -142,6 +142,7 @@ export function GameBoard({ board, size, onFold, isGameOver }) {
       
       setActiveDirection(null);
       setActiveDepth(null);
+      isCancelledRef.current = false;
       setIsCancelled(false);
       setPreview({ valid: true, ghosts: [], mismatches: [] });
     });
@@ -188,9 +189,8 @@ export function GameBoard({ board, size, onFold, isGameOver }) {
   return (
     <GestureDetector gesture={panGesture}>
       <View style={[styles.container, { width: size, height: size }]}>
-        {/* Grid and Tiles - unified coordinate system */}
         <View style={styles.boardContent}>
-          {/* Background cells with highlight */}
+          {/* Background cells */}
           {Array(4).fill(null).map((_, row) =>
             Array(4).fill(null).map((_, col) => {
               const isAffected = isAffectedCell(row, col);
@@ -199,7 +199,6 @@ export function GameBoard({ board, size, onFold, isGameOver }) {
                   key={`cell-${row}-${col}`}
                   style={[
                     styles.cell,
-                    // Only show individual cell highlight on tap, not during swipe
                     isAffected && !activeDirection && styles.affectedCell,
                     {
                       width: cellSize,
@@ -280,9 +279,46 @@ export function GameBoard({ board, size, onFold, isGameOver }) {
               isMerge={ghost.isMerge}
             />
           ))}
+          
+          {/* Star Markers - indicating next spawn/upgrade position */}
+          {starPositions && starPositions.map((star, index) => (
+            <View
+              key={`star-${index}`}
+              style={[
+                styles.starMarker,
+                {
+                  width: cellSize,
+                  height: cellSize,
+                  left: PADDING + star.col * (cellSize + GAP),
+                  top: PADDING + star.row * (cellSize + GAP),
+                },
+              ]}
+            >
+              <Text style={styles.starText}>★</Text>
+            </View>
+          ))}
+          
+          {/* Gray Stars - preview only */}
+          {grayStars && grayStars.map((star, index) => (
+            <View
+              key={`gray-star-${index}`}
+              style={[
+                styles.starMarker,
+                styles.grayStarMarker,
+                {
+                  width: cellSize,
+                  height: cellSize,
+                  left: PADDING + star.col * (cellSize + GAP),
+                  top: PADDING + star.row * (cellSize + GAP),
+                },
+              ]}
+            >
+              <Text style={[styles.starText, styles.grayStarText]}>★</Text>
+            </View>
+          ))}
         </View>
 
-        {/* Fold Direction Arrow - on top of tiles */}
+        {/* Fold Direction Arrow */}
         {activeDirection && activeDepth && !isCancelled && (
           <View style={[
             styles.foldArrowOverlay,
@@ -323,7 +359,7 @@ export function GameBoard({ board, size, onFold, isGameOver }) {
           </View>
         )}
 
-        {/* Cancelled / Empty Message Overlay */}
+        {/* Cancelled / Empty Overlay */}
         {(isCancelled || preview.isEmpty) && (
           <View style={[styles.directionOverlay, styles.messageOverlay]}>
             <Text style={styles.messageText}>
@@ -385,6 +421,25 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.3)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
+  },
+  starMarker: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    borderRadius: 6,
+  },
+  starText: {
+    fontSize: 32,
+    color: '#edc22e',
+    opacity: 0.8,
+  },
+  grayStarMarker: {
+    opacity: 0.4,
+  },
+  grayStarText: {
+    color: '#999',
+    opacity: 0.5,
   },
   directionOverlay: {
     position: 'absolute',
