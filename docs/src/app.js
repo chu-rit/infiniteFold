@@ -1,633 +1,420 @@
-// Infinite Fold - Web Version
-import { 
-  BOARD_SIZE, 
-  DIRECTIONS, 
-  initializeBoard, 
-  executeFold, 
-  getFoldPreview, 
-  spawnNewNumber, 
-  checkGameOver 
-} from './game-logic.js';
+// Game State
+let board = [];
+let score = 0;
+let bestScore = 0;
+let comboCount = 0;
+let isGameOver = false;
+let gameOverDismissed = false;
+let starPositions = [];
+let grayStars = [];
+let validFoldCount = 8;
+
+// Touch handling
+let touchStartX = 0;
+let touchStartY = 0;
+let activeDirection = null;
+let activeDepth = null;
+let isCancelled = false;
 
 // Constants
 const SWIPE_THRESHOLD = 20;
 const DEPTH_THRESHOLD = 80;
 const CANCEL_THRESHOLD = 180;
-const GAP = 8;
-const PADDING = 12;
 
-// Game State
-let board = initializeBoard();
-let score = 0;
-let bestScore = localStorage.getItem('infiniteFoldBestScore') || 0;
-let isGameOver = false;
-let gameOverDismissed = false;
-let comboCount = 0;
-
-// Preview State
-let activeDirection = null;
-let activeDepth = null;
-let preview = { valid: true, ghosts: [], mismatches: [] };
-let isCancelled = false;
-let startPosition = { x: 0, y: 0 };
-
-// Touch/Mouse handling
-let isDragging = false;
-let dragStartX = 0;
-let dragStartY = 0;
-let currentTranslateX = 0;
-let currentTranslateY = 0;
-
-// DOM Elements
-const root = document.getElementById('root');
-let boardElement = null;
-let boardSize = 0;
-let cellSize = 0;
-
-// Initialize
+// Initialize game
 function init() {
-  render();
-  setupEventListeners();
-  updateBoardSize();
-  window.addEventListener('resize', updateBoardSize);
+    loadBestScore();
+    resetGame();
+    setupEventListeners();
+    render();
 }
 
-function updateBoardSize() {
-  const container = document.querySelector('.board-container');
-  if (!container) return;
-  const containerWidth = container.clientWidth - 32;
-  const containerHeight = window.innerHeight - 250;
-  boardSize = Math.min(containerWidth, containerHeight, 380);
-  cellSize = (boardSize - PADDING * 2 - GAP * 3) / 4;
-  if (boardElement) {
-    boardElement.style.width = boardSize + 'px';
-    boardElement.style.height = boardSize + 'px';
-  }
-  renderBoard();
+// Load best score from localStorage
+function loadBestScore() {
+    const saved = localStorage.getItem('infiniteFoldBestScore');
+    if (saved) {
+        bestScore = parseInt(saved);
+        document.getElementById('best-score').textContent = bestScore;
+    }
 }
 
-function resetGame() {
-  board = initializeBoard();
-  score = 0;
-  isGameOver = false;
-  gameOverDismissed = false;
-  comboCount = 0;
-  activeDirection = null;
-  activeDepth = null;
-  preview = { valid: true, ghosts: [], mismatches: [] };
-  render();
-}
-
-function dismissGameOver() {
-  gameOverDismissed = true;
-  render();
-}
-
-function handleFold(direction, depth) {
-  const result = executeFold(board, direction, depth);
-  
-  if (result.mismatches.length > 0) {
-    return { valid: false, mismatches: result.mismatches };
-  }
-
-  // Game over state - only provide feedback, don't change state
-  if (isGameOver) {
-    return { valid: true, mergeCount: result.mergeCount, gameOver: true };
-  }
-
-  let newBoard = result.board;
-
-  if (result.mergeCount > 0) {
-    comboCount += 1;
-  } else {
-    comboCount = 0;
-  }
-  newBoard = spawnNewNumber(newBoard);
-
-  score += result.points;
-  if (score > bestScore) {
-    bestScore = score;
+// Save best score to localStorage
+function saveBestScore() {
     localStorage.setItem('infiniteFoldBestScore', bestScore);
-  }
-
-  board = newBoard;
-
-  if (checkGameOver(newBoard)) {
-    isGameOver = true;
-  }
-
-  return { valid: true, mergeCount: result.mergeCount };
 }
 
-function getDirectionFromOffset(dx, dy) {
-  const absDx = Math.abs(dx);
-  const absDy = Math.abs(dy);
-  if (Math.max(absDx, absDy) < SWIPE_THRESHOLD) return null;
-  
-  if (absDx > absDy) {
-    return dx > 0 ? DIRECTIONS.LEFT : DIRECTIONS.RIGHT;
-  }
-  return dy > 0 ? DIRECTIONS.TOP : DIRECTIONS.BOTTOM;
-}
-
-function isCenterStart(x, y) {
-  const cellWithGap = cellSize + GAP;
-  const col = Math.floor((x - PADDING + GAP/2) / cellWithGap);
-  const row = Math.floor((y - PADDING + GAP/2) / cellWithGap);
-  const clampedCol = Math.max(0, Math.min(3, col));
-  const clampedRow = Math.max(0, Math.min(3, row));
-  return (clampedRow === 1 || clampedRow === 2) && (clampedCol === 1 || clampedCol === 2);
-}
-
-function getDepthFromOffset(dx, dy, startX, startY) {
-  const maxOffset = Math.max(Math.abs(dx), Math.abs(dy));
-  
-  if (maxOffset > CANCEL_THRESHOLD) return 'cancel';
-  if (maxOffset < SWIPE_THRESHOLD) return null;
-  
-  const baseDepth = isCenterStart(startX, startY) ? 2 : 1;
-  if (baseDepth === 2) return 2;
-  
-  return maxOffset < DEPTH_THRESHOLD ? 1 : 2;
-}
-
-function setupEventListeners() {
-  // Pointer Events API 사용 (iOS 13+, 더 안정적)
-  if (window.PointerEvent) {
-    document.addEventListener('pointerdown', handlePointerDown, { passive: false });
-    document.addEventListener('pointermove', handlePointerMove, { passive: false });
-    document.addEventListener('pointerup', handlePointerUp, { passive: false });
-    document.addEventListener('pointercancel', handlePointerUp, { passive: false });
-  } else {
-    // Fallback for old browsers
-    document.addEventListener('touchstart', handleTouchStart, { passive: false });
-    document.addEventListener('touchmove', handleTouchMove, { passive: false });
-    document.addEventListener('touchend', handleTouchEnd, { passive: false });
-    document.addEventListener('touchcancel', handleTouchEnd, { passive: false });
-    document.addEventListener('mousedown', handleMouseDown);
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  }
-}
-
-function handleTouchStart(e) {
-  // 보드 요소가 없으면 리턴
-  if (!boardElement) return;
-  // 멀티터치 무시
-  if (e.touches.length !== 1) return;
-  
-  const touch = e.touches[0];
-  const rect = boardElement.getBoundingClientRect();
-  // 보드 영역 내에서만 시작
-  if (touch.clientX < rect.left || touch.clientX > rect.right ||
-      touch.clientY < rect.top || touch.clientY > rect.bottom) return;
-  
-  // iOS Safari에서는 touchstart preventDefault 하지 않음
-  startDrag(touch.clientX, touch.clientY);
-}
-
-function handleMouseDown(e) {
-  const rect = boardElement.getBoundingClientRect();
-  if (e.clientX < rect.left || e.clientX > rect.right ||
-      e.clientY < rect.top || e.clientY > rect.bottom) return;
-  
-  startDrag(e.clientX, e.clientY);
-}
-
-function startDrag(x, y) {
-  const rect = boardElement.getBoundingClientRect();
-  startPosition = { x: x - rect.left, y: y - rect.top };
-  dragStartX = x;
-  dragStartY = y;
-  isDragging = true;
-  isCancelled = false;
-}
-
-function handleTouchMove(e) {
-  if (!isDragging) return;
-  // 첫 번째 터치 포인트 사용
-  const touch = e.touches[0];
-  if (!touch) return;
-  
-  e.preventDefault();
-  handleDragMove(touch.clientX, touch.clientY);
-}
-
-function handleMouseMove(e) {
-  if (!isDragging) return;
-  handleDragMove(e.clientX, e.clientY);
-}
-
-function handleDragMove(x, y) {
-  currentTranslateX = x - dragStartX;
-  currentTranslateY = y - dragStartY;
-  
-  const direction = getDirectionFromOffset(currentTranslateX, currentTranslateY);
-  const depth = getDepthFromOffset(currentTranslateX, currentTranslateY, startPosition.x, startPosition.y);
-  
-  if (depth === 'cancel') {
-    isCancelled = true;
-    activeDirection = null;
-    activeDepth = null;
-    preview = { valid: true, ghosts: [], mismatches: [] };
-    renderBoard();
-    return;
-  }
-  
-  if (direction !== activeDirection || depth !== activeDepth) {
-    activeDirection = direction;
-    activeDepth = depth;
+// Reset game
+function resetGame() {
+    board = initializeBoard();
+    score = 0;
+    isGameOver = false;
+    gameOverDismissed = false;
+    comboCount = 0;
     
-    if (direction && depth && depth !== 'cancel') {
-      const previewResult = getFoldPreview(board, direction, depth);
-      preview = previewResult;
+    const starResult = generateStarPositions(board);
+    starPositions = starResult.stars;
+    grayStars = starResult.grayStars;
+    
+    validFoldCount = getValidFoldCount(board);
+    
+    updateUI();
+    hideGameOver();
+    hideRetryButton();
+}
+
+// Generate star positions (30% normal star, 70% gray star)
+function generateStarPositions(currentBoard) {
+    const emptyCells = [];
+    for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 4; col++) {
+            if (currentBoard[row][col] === 0) {
+                emptyCells.push({ row, col });
+            }
+        }
+    }
+    if (emptyCells.length === 0) return { stars: [], grayStars: [] };
+    
+    const randomPos = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+    
+    if (Math.random() <= 0.3) {
+        // 30%: normal star with functionality
+        return { stars: [randomPos], grayStars: [] };
     } else {
-      preview = { valid: true, ghosts: [], mismatches: [] };
+        // 70%: gray star (preview only)
+        return { stars: [], grayStars: [randomPos] };
     }
-    renderBoard();
-  }
 }
 
-// Pointer Events handlers (iOS 13+)
-function handlePointerDown(e) {
-  if (!boardElement) return;
-  const rect = boardElement.getBoundingClientRect();
-  if (e.clientX < rect.left || e.clientX > rect.right ||
-      e.clientY < rect.top || e.clientY > rect.bottom) return;
-  
-  e.preventDefault();
-  startDrag(e.clientX, e.clientY);
-}
+// Handle fold
+function handleFold(direction, depth) {
+    if (isGameOver && !gameOverDismissed) return;
+    
+    const { possible, mismatches } = canFold(board, direction, depth);
+    if (!possible || mismatches.length > 0) return;
 
-function handlePointerMove(e) {
-  if (!isDragging) return;
-  e.preventDefault();
-  handleDragMove(e.clientX, e.clientY);
-}
+    const result = executeFold(board, direction, depth);
+    let newBoard = result.board;
 
-function handlePointerUp(e) {
-  if (!isDragging) return;
-  isDragging = false;
-  e.preventDefault();
-  
-  const direction = getDirectionFromOffset(currentTranslateX, currentTranslateY);
-  const depth = getDepthFromOffset(currentTranslateX, currentTranslateY, startPosition.x, startPosition.y);
-  
-  if (direction && depth && depth !== 'cancel') {
-    const previewResult = getFoldPreview(board, direction, depth);
-    if (previewResult.valid && !previewResult.isEmpty) {
-      handleFold(direction, depth);
+    // Update combo
+    let newCombo = comboCount;
+    if (result.mergeCount > 0) {
+        newCombo += 1;
+        comboCount = newCombo;
+        showComboPopup(newCombo);
+        if (newCombo >= 3) {
+            showComboBurst(newCombo);
+        }
+    } else {
+        newCombo = 0;
+        comboCount = 0;
     }
-  }
-  
-  activeDirection = null;
-  activeDepth = null;
-  isCancelled = false;
-  preview = { valid: true, ghosts: [], mismatches: [] };
-  currentTranslateX = 0;
-  currentTranslateY = 0;
-  render();
-}
 
-// Touch fallback (old iOS)
-function handleTouchEnd(e) {
-  if (!isDragging) return;
-  isDragging = false;
-  
-  const direction = getDirectionFromOffset(currentTranslateX, currentTranslateY);
-  const depth = getDepthFromOffset(currentTranslateX, currentTranslateY, startPosition.x, startPosition.y);
-  
-  if (direction && depth && depth !== 'cancel') {
-    const previewResult = getFoldPreview(board, direction, depth);
-    if (previewResult.valid && !previewResult.isEmpty) {
-      handleFold(direction, depth);
+    // Handle stars (30% stars only have functionality)
+    let starUpgraded = false;
+    if (starPositions.length > 0) {
+        // Process normal stars only
+        for (const starPos of starPositions) {
+            const { row, col } = starPos;
+            if (newBoard[row][col] === 0) {
+                // Star position is empty → spawn at that position
+                newBoard = spawnNewNumber(newBoard, { row, col });
+            } else {
+                // Star position is filled → upgrade block
+                newBoard[row][col] *= 2;
+                starUpgraded = true;
+            }
+        }
+    } else {
+        // No normal stars or only gray stars → normal spawn
+        newBoard = spawnNewNumber(newBoard);
     }
-  }
-  
-  activeDirection = null;
-  activeDepth = null;
-  isCancelled = false;
-  preview = { valid: true, ghosts: [], mismatches: [] };
-  currentTranslateX = 0;
-  currentTranslateY = 0;
-  render();
+
+    // Generate next turn stars
+    const nextStarResult = generateStarPositions(newBoard);
+    starPositions = nextStarResult.stars;
+    grayStars = nextStarResult.grayStars;
+
+    // Update score (combo bonus only, no star bonus)
+    const comboBonus = newCombo > 0 ? Math.pow(2, newCombo) : 0;
+    score += result.points + comboBonus;
+    
+    if (score > bestScore) {
+        bestScore = score;
+        saveBestScore();
+    }
+
+    board = newBoard;
+
+    // Calculate valid fold count
+    validFoldCount = getValidFoldCount(board);
+    
+    if (validFoldCount === 0) {
+        isGameOver = true;
+        showGameOver();
+    }
+
+    updateUI();
+    render();
 }
 
-function handleMouseUp(e) {
-  if (!isDragging) return;
-  isDragging = false;
-  handleDragEnd();
+// Update UI elements
+function updateUI() {
+    document.getElementById('score').textContent = score;
+    document.getElementById('best-score').textContent = bestScore;
+    document.getElementById('moves-count').textContent = validFoldCount;
+    
+    // Warning color for low moves
+    const movesElement = document.getElementById('moves-count');
+    if (validFoldCount <= 2) {
+        movesElement.classList.add('moves-value-warning');
+    } else {
+        movesElement.classList.remove('moves-value-warning');
+    }
 }
 
-function handleDragEnd() {
-  console.log('handleDragEnd called');
-  console.log('currentTranslate:', currentTranslateX, currentTranslateY);
-  console.log('startPosition:', startPosition.x, startPosition.y);
-  
-  // 취소된 경우
-  if (isCancelled) {
-    console.log('cancelled - resetting');
+// Show combo popup
+function showComboPopup(combo) {
+    const popup = document.createElement('div');
+    popup.className = 'combo-popup';
+    popup.textContent = `COMBO x${combo}`;
+    document.querySelector('.container').appendChild(popup);
+    
+    setTimeout(() => {
+        popup.remove();
+    }, 1200);
+}
+
+// Show combo burst (for 3+ combos)
+function showComboBurst(combo) {
+    const container = document.getElementById('combo-container');
+    container.innerHTML = `
+        <div class="combo-burst ${combo >= 5 ? 'combo-burst-special' : ''}">
+            <div class="combo-burst-label">COMBO</div>
+            <div class="combo-number-row">
+                <div class="combo-burst-number">×${combo}</div>
+            </div>
+        </div>
+    `;
+    
+    setTimeout(() => {
+        container.innerHTML = '';
+    }, 2000);
+}
+
+// Show game over
+function showGameOver() {
+    document.getElementById('final-score').textContent = `Final Score: ${score}`;
+    document.getElementById('game-over-overlay').classList.remove('hidden');
+}
+
+// Hide game over
+function hideGameOver() {
+    document.getElementById('game-over-overlay').classList.add('hidden');
+}
+
+// Show retry button
+function showRetryButton() {
+    document.getElementById('retry-section').classList.remove('hidden');
+}
+
+// Hide retry button
+function hideRetryButton() {
+    document.getElementById('retry-section').classList.add('hidden');
+}
+
+// Render board
+function render() {
+    const boardElement = document.getElementById('board');
+    boardElement.innerHTML = '';
+
+    // Create cells
+    for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 4; col++) {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            boardElement.appendChild(cell);
+        }
+    }
+
+    // Create tiles
+    for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 4; col++) {
+            const value = board[row][col];
+            if (value !== 0) {
+                const tile = document.createElement('div');
+                tile.className = `tile tile-${value}`;
+                tile.textContent = value;
+                
+                const cellSize = (boardElement.offsetWidth - 24) / 4; // padding + gaps
+                const gap = 8;
+                const padding = 12;
+                
+                tile.style.width = `${cellSize}px`;
+                tile.style.height = `${cellSize}px`;
+                tile.style.left = `${padding + col * (cellSize + gap)}px`;
+                tile.style.top = `${padding + row * (cellSize + gap)}px`;
+                
+                boardElement.appendChild(tile);
+            }
+        }
+    }
+
+    // Render stars
+    const cellSize = (boardElement.offsetWidth - 24) / 4;
+    const gap = 8;
+    const padding = 12;
+
+    // Normal stars
+    starPositions.forEach((star, index) => {
+        const starElement = document.createElement('div');
+        starElement.className = 'star-marker';
+        starElement.style.width = `${cellSize}px`;
+        starElement.style.height = `${cellSize}px`;
+        starElement.style.left = `${padding + star.col * (cellSize + gap)}px`;
+        starElement.style.top = `${padding + star.row * (cellSize + gap)}px`;
+        starElement.innerHTML = '<div class="star-text">★</div>';
+        boardElement.appendChild(starElement);
+    });
+
+    // Gray stars
+    grayStars.forEach((star, index) => {
+        const starElement = document.createElement('div');
+        starElement.className = 'star-marker gray-star-marker';
+        starElement.style.width = `${cellSize}px`;
+        starElement.style.height = `${cellSize}px`;
+        starElement.style.left = `${padding + star.col * (cellSize + gap)}px`;
+        starElement.style.top = `${padding + star.row * (cellSize + gap)}px`;
+        starElement.innerHTML = '<div class="star-text gray-star-text">★</div>';
+        boardElement.appendChild(starElement);
+    });
+}
+
+// Setup event listeners
+function setupEventListeners() {
+    const boardElement = document.getElementById('board');
+    
+    // Touch events
+    boardElement.addEventListener('touchstart', handleTouchStart, { passive: false });
+    boardElement.addEventListener('touchmove', handleTouchMove, { passive: false });
+    boardElement.addEventListener('touchend', handleTouchEnd, { passive: false });
+    
+    // Mouse events for desktop
+    boardElement.addEventListener('mousedown', handleMouseDown);
+    boardElement.addEventListener('mousemove', handleMouseMove);
+    boardElement.addEventListener('mouseup', handleMouseUp);
+    boardElement.addEventListener('mouseleave', handleMouseUp);
+    
+    // Game over close button
+    document.getElementById('close-button').addEventListener('click', () => {
+        hideGameOver();
+        showRetryButton();
+    });
+    
+    // Retry button
+    document.getElementById('retry-button').addEventListener('click', resetGame);
+    
+    // Prevent context menu
+    document.addEventListener('contextmenu', e => e.preventDefault());
+}
+
+// Touch event handlers
+function handleTouchStart(e) {
+    e.preventDefault();
+    const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
     activeDirection = null;
     activeDepth = null;
     isCancelled = false;
-    preview = { valid: true, ghosts: [], mismatches: [] };
-    currentTranslateX = 0;
-    currentTranslateY = 0;
-    renderBoard();
-    return;
-  }
-  
-  // 드래그 거리가 충분하지 않으면 무시
-  const direction = getDirectionFromOffset(currentTranslateX, currentTranslateY);
-  const depth = getDepthFromOffset(currentTranslateX, currentTranslateY, startPosition.x, startPosition.y);
-  
-  console.log('direction:', direction, 'depth:', depth);
-  
-  // 유효하지 않은 방향/깊이면 무시
-  if (!direction || !depth || depth === 'cancel') {
-    console.log('invalid direction/depth - resetting only');
+}
+
+function handleTouchMove(e) {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+    if (distance < SWIPE_THRESHOLD) return;
+    
+    const direction = Math.abs(deltaX) > Math.abs(deltaY) 
+        ? (deltaX > 0 ? 'right' : 'left')
+        : (deltaY > 0 ? 'bottom' : 'top');
+    
+    const depth = distance > DEPTH_THRESHOLD ? 2 : 1;
+    
+    if (distance > CANCEL_THRESHOLD) {
+        isCancelled = true;
+        render();
+        return;
+    }
+    
+    if (!isCancelled) {
+        activeDirection = direction;
+        activeDepth = depth;
+        render();
+    }
+}
+
+function handleTouchEnd(e) {
+    e.preventDefault();
+    if (!isCancelled && activeDirection && activeDepth) {
+        handleFold(activeDirection, activeDepth);
+    }
     activeDirection = null;
     activeDepth = null;
-    preview = { valid: true, ghosts: [], mismatches: [] };
-    currentTranslateX = 0;
-    currentTranslateY = 0;
-    renderBoard();
-    return;
-  }
-  
-  const previewResult = getFoldPreview(board, direction, depth);
-  
-  // 유효한 폴드 실행
-  if (previewResult.valid && !previewResult.isEmpty) {
-    handleFold(direction, depth);
-  }
-  
-  // 상태 초기화
-  activeDirection = null;
-  activeDepth = null;
-  isCancelled = false;
-  preview = { valid: true, ghosts: [], mismatches: [] };
-  currentTranslateX = 0;
-  currentTranslateY = 0;
-  render();
+    isCancelled = false;
+    render();
 }
 
-function getAffectedCells() {
-  if (!activeDirection || !activeDepth) return [];
-  const cells = [];
-  
-  if (activeDirection === DIRECTIONS.TOP) {
-    for (let row = 0; row < activeDepth; row++) {
-      for (let col = 0; col < 4; col++) cells.push({ row, col });
-    }
-  } else if (activeDirection === DIRECTIONS.BOTTOM) {
-    for (let row = 4 - activeDepth; row < 4; row++) {
-      for (let col = 0; col < 4; col++) cells.push({ row, col });
-    }
-  } else if (activeDirection === DIRECTIONS.LEFT) {
-    for (let col = 0; col < activeDepth; col++) {
-      for (let row = 0; row < 4; row++) cells.push({ row, col });
-    }
-  } else if (activeDirection === DIRECTIONS.RIGHT) {
-    for (let col = 4 - activeDepth; col < 4; col++) {
-      for (let row = 0; row < 4; row++) cells.push({ row, col });
-    }
-  }
-  return cells;
+// Mouse event handlers
+function handleMouseDown(e) {
+    e.preventDefault();
+    touchStartX = e.clientX;
+    touchStartY = e.clientY;
+    activeDirection = null;
+    activeDepth = null;
+    isCancelled = false;
 }
 
-function isAffectedCell(row, col) {
-  return getAffectedCells().some(c => c.row === row && c.col === col);
-}
-
-function isMismatchCell(row, col) {
-  return preview.mismatches.some(m => 
-    (m.row === row && m.col === col) || 
-    (m.targetRow === row && m.targetCol === col)
-  );
-}
-
-function getTileColorClass(value) {
-  if (value <= 2048) return `tile-${value}`;
-  return 'tile-default';
-}
-
-function render() {
-  root.innerHTML = `
-    <div class="container">
-      <div class="header">
-        <div class="title-block">
-          <div class="title">INFINITE</div>
-          <div class="title-accent">FOLD</div>
-        </div>
-        <div class="score-block">
-          <div class="score-box">
-            <div class="score-label">SCORE</div>
-            <div class="score-value">${score}</div>
-          </div>
-          <div class="score-box">
-            <div class="score-label">BEST</div>
-            <div class="score-value">${bestScore}</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="combo-bar ${comboCount === 0 ? 'hidden' : ''}">
-        <div class="combo-text">🔥 COMBO ×${comboCount > 0 ? comboCount : 1}</div>
-      </div>
-
-      <div class="board-container"></div>
-
-      ${isGameOver && !gameOverDismissed ? `
-        <div class="overlay">
-          <div class="game-over-card">
-            <div class="game-over-title">DEADLOCKED</div>
-            <div class="game-over-message">No more valid moves!</div>
-            <div class="game-over-score">Final Score: ${score}</div>
-            <div class="close-button" id="closeBtn">
-              <div class="close-button-text">✕ CLOSE</div>
-            </div>
-          </div>
-        </div>
-      ` : ''}
-
-      ${isGameOver && gameOverDismissed ? `
-        <div class="retry-bar" id="retryBtn">
-          <div class="retry-button-text">🔄 TRY AGAIN</div>
-        </div>
-      ` : ''}
-
-      <div class="instructions">
-        <div class="instruction-text">Swipe to fold • Short: 1-Row • Long: 2-Row</div>
-        <div class="tip-text">Always spawns new number after each fold</div>
-      </div>
-    </div>
-  `;
-  
-  
-  setTimeout(() => {
-    renderBoard();
+function handleMouseMove(e) {
+    const deltaX = e.clientX - touchStartX;
+    const deltaY = e.clientY - touchStartY;
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
     
-    // iOS에서 버튼 터치 이벤트 직접 바인딩
-    const closeBtn = document.getElementById('closeBtn');
-    const retryBtn = document.getElementById('retryBtn');
+    if (distance < SWIPE_THRESHOLD) return;
     
-    if (closeBtn) {
-      closeBtn.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        dismissGameOver();
-      }, { passive: false });
-      closeBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        dismissGameOver();
-      });
+    const direction = Math.abs(deltaX) > Math.abs(deltaY) 
+        ? (deltaX > 0 ? 'right' : 'left')
+        : (deltaY > 0 ? 'bottom' : 'top');
+    
+    const depth = distance > DEPTH_THRESHOLD ? 2 : 1;
+    
+    if (distance > CANCEL_THRESHOLD) {
+        isCancelled = true;
+        render();
+        return;
     }
     
-    if (retryBtn) {
-      retryBtn.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        resetGame();
-      }, { passive: false });
-      retryBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        resetGame();
-      });
+    if (!isCancelled) {
+        activeDirection = direction;
+        activeDepth = depth;
+        render();
     }
-  }, 0);
 }
 
-function renderBoard() {
-  const container = document.querySelector('.board-container');
-  if (!container) return;
-  
-  const affectedCells = getAffectedCells();
-  
-  container.innerHTML = `
-    <div class="game-board" style="width: ${boardSize}px; height: ${boardSize}px;">
-      <div class="board-content">
-        ${Array(4).fill(null).map((_, row) =>
-          Array(4).fill(null).map((_, col) => {
-            const isAffected = affectedCells.some(c => c.row === row && c.col === col);
-            return `
-              <div class="cell ${isAffected && !activeDirection ? 'affected' : ''}" 
-                   style="width: ${cellSize}px; height: ${cellSize}px; 
-                          left: ${PADDING + col * (cellSize + GAP)}px; 
-                          top: ${PADDING + row * (cellSize + GAP)}px;">
-              </div>
-            `;
-          }).join('')
-        ).join('')}
-        
-        ${activeDirection && activeDepth ? `
-          <div class="fold-area-border" style="
-            ${activeDirection === DIRECTIONS.TOP ? `
-              top: ${PADDING}px;
-              left: ${PADDING}px;
-              right: ${PADDING}px;
-              height: ${activeDepth * cellSize + (activeDepth - 1) * GAP}px;
-            ` : ''}
-            ${activeDirection === DIRECTIONS.BOTTOM ? `
-              bottom: ${PADDING}px;
-              left: ${PADDING}px;
-              right: ${PADDING}px;
-              height: ${activeDepth * cellSize + (activeDepth - 1) * GAP}px;
-            ` : ''}
-            ${activeDirection === DIRECTIONS.LEFT ? `
-              left: ${PADDING}px;
-              top: ${PADDING}px;
-              bottom: ${PADDING}px;
-              width: ${activeDepth * cellSize + (activeDepth - 1) * GAP}px;
-            ` : ''}
-            ${activeDirection === DIRECTIONS.RIGHT ? `
-              right: ${PADDING}px;
-              top: ${PADDING}px;
-              bottom: ${PADDING}px;
-              width: ${activeDepth * cellSize + (activeDepth - 1) * GAP}px;
-            ` : ''}
-          "></div>
-        ` : ''}
-        
-        ${board.map((row, rowIndex) =>
-          row.map((value, colIndex) => {
-            if (value === 0) return '';
-            const isAffected = affectedCells.some(c => c.row === rowIndex && c.col === colIndex);
-            const isMismatch = isMismatchCell(rowIndex, colIndex);
-            const fontSize = value >= 1000 ? cellSize * 0.28 : value >= 100 ? cellSize * 0.35 : cellSize * 0.5;
-            return `
-              <div class="tile ${getTileColorClass(value)} ${isAffected ? 'affected' : ''} ${isMismatch ? 'mismatch' : ''}" 
-                   style="width: ${cellSize}px; height: ${cellSize}px;
-                          left: ${PADDING + colIndex * (cellSize + GAP)}px;
-                          top: ${PADDING + rowIndex * (cellSize + GAP)}px;
-                          font-size: ${fontSize}px;">
-                <span class="tile-value">${value}</span>
-              </div>
-            `;
-          }).join('')
-        ).join('')}
-        
-        ${preview.valid && preview.ghosts.map((ghost, index) => {
-          const fontSize = ghost.value >= 1000 ? cellSize * 0.28 : ghost.value >= 100 ? cellSize * 0.35 : cellSize * 0.5;
-          return `
-            <div class="tile ghost ${ghost.isMerge ? 'merge' : ''} ${getTileColorClass(ghost.value)}"
-                 style="width: ${cellSize}px; height: ${cellSize}px;
-                        left: ${PADDING + ghost.col * (cellSize + GAP)}px;
-                        top: ${PADDING + ghost.row * (cellSize + GAP)}px;
-                        font-size: ${fontSize}px;">
-              <span class="tile-value">${ghost.value}</span>
-              ${ghost.isMerge ? '<div class="merge-badge">×2</div>' : ''}
-            </div>
-          `;
-        }).join('')}
-      </div>
-      
-      ${activeDirection && !isCancelled ? `
-        <div class="arrow-overlay" style="
-          ${activeDirection === DIRECTIONS.TOP ? `
-            top: ${PADDING + (activeDepth || 1) * cellSize + ((activeDepth || 1) - 0.5) * GAP - 24}px;
-            left: 0; right: 0;
-            justify-content: center;
-          ` : ''}
-          ${activeDirection === DIRECTIONS.BOTTOM ? `
-            bottom: ${PADDING + (activeDepth || 1) * (cellSize + GAP) - GAP/2 - 24}px;
-            left: 0; right: 0;
-            justify-content: center;
-          ` : ''}
-          ${activeDirection === DIRECTIONS.LEFT ? `
-            left: ${PADDING + (activeDepth || 1) * cellSize + ((activeDepth || 1) - 0.5) * GAP - 24}px;
-            top: 0; bottom: 0;
-            justify-content: center;
-          ` : ''}
-          ${activeDirection === DIRECTIONS.RIGHT ? `
-            right: ${PADDING + (activeDepth || 1) * cellSize + ((activeDepth || 1) - 0.5) * GAP - 24}px;
-            top: 0; bottom: 0;
-            justify-content: center;
-          ` : ''}
-        ">
-          <div class="arrow-text" style="color: ${preview.valid ? '#4ecca3' : '#ff4444'}">
-            ${activeDirection === DIRECTIONS.TOP ? '▼' : ''}
-            ${activeDirection === DIRECTIONS.BOTTOM ? '▲' : ''}
-            ${activeDirection === DIRECTIONS.LEFT ? '▶' : ''}
-            ${activeDirection === DIRECTIONS.RIGHT ? '◀' : ''}
-          </div>
-        </div>
-      ` : ''}
-      
-      ${(isCancelled || preview.isEmpty) ? `
-        <div class="message-overlay">
-          <div class="message-text">${isCancelled ? 'CANCELLED' : 'EMPTY'}</div>
-        </div>
-      ` : ''}
-
-      ${!preview.valid && !preview.isEmpty ? `
-        <div class="warning-overlay">
-          <div class="warning-text">✕ BLOCKED</div>
-        </div>
-      ` : ''}
-    </div>
-  `;
-  
-  boardElement = container.querySelector('.game-board');
+function handleMouseUp(e) {
+    if (!isCancelled && activeDirection && activeDepth) {
+        handleFold(activeDirection, activeDepth);
+    }
+    activeDirection = null;
+    activeDepth = null;
+    isCancelled = false;
+    render();
 }
 
-// Start the app
-init();
+// Initialize game when page loads
+window.addEventListener('load', init);
+
+// Handle window resize
+window.addEventListener('resize', render);
