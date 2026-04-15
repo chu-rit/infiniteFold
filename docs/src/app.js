@@ -782,7 +782,7 @@ function render() {
 
 function renderBoard() {
   const container = document.querySelector('.board-container');
-  if (!container || cellSize === 0) return;
+  if (!container || cellSize === 0 || !cellSize) return;
   
   const affectedCells = getAffectedCells();
   
@@ -849,7 +849,7 @@ function renderBoard() {
           }).join('')
         ).join('')}
         
-        ${preview.valid && preview.ghosts.map((ghost, index) => {
+        ${preview && preview.valid && preview.ghosts.map((ghost, index) => {
           const fontSize = ghost.value >= 1000 ? cellSize * 0.28 : ghost.value >= 100 ? cellSize * 0.35 : cellSize * 0.5;
           return `
             <div class="tile ghost ${ghost.isMerge ? 'merge' : ''} ${getTileColorClass(ghost.value)}"
@@ -864,7 +864,7 @@ function renderBoard() {
         }).join('')}
       </div>
       
-      ${activeDirection && !isCancelled ? `
+      ${activeDirection && !isCancelled && cellSize > 0 ? `
         <div class="arrow-overlay" style="
           ${activeDirection === DIRECTIONS.TOP ? `
             top: ${PADDING + (activeDepth || 1) * cellSize + ((activeDepth || 1) - 0.5) * GAP - 24}px;
@@ -887,7 +887,7 @@ function renderBoard() {
             justify-content: center;
           ` : ''}
         ">
-          <div class="arrow-text" style="color: ${preview.valid ? '#4ecca3' : '#ff4444'}">
+          <div class="arrow-text" style="color: ${preview && preview.valid ? '#4ecca3' : '#ff4444'}">
             ${activeDirection === DIRECTIONS.TOP ? '▼' : ''}
             ${activeDirection === DIRECTIONS.BOTTOM ? '▲' : ''}
             ${activeDirection === DIRECTIONS.LEFT ? '▶' : ''}
