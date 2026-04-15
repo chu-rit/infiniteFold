@@ -802,7 +802,7 @@ function renderBoard() {
           }).join('')
         ).join('')}
         
-        ${activeDirection && activeDepth ? `
+        ${activeDirection && activeDepth && cellSize > 0 ? `
           <div class="fold-area-border" style="
             ${activeDirection === DIRECTIONS.TOP ? `
               top: ${PADDING}px;
