@@ -586,7 +586,7 @@ function renderBoard() {
           }).join('')
         ).join('')}
         
-        ${preview.valid && preview.ghosts.map((ghost, index) => {
+        ${preview.valid ? preview.ghosts.map((ghost, index) => {
           const fontSize = ghost.value >= 1000 ? cellSize * 0.28 : ghost.value >= 100 ? cellSize * 0.35 : cellSize * 0.5;
           return `
             <div class="tile ghost ${ghost.isMerge ? 'merge' : ''} ${getTileColorClass(ghost.value)}"
@@ -598,7 +598,7 @@ function renderBoard() {
               ${ghost.isMerge ? '<div class="merge-badge">×2</div>' : ''}
             </div>
           `;
-        }).join('')}
+        }).join('') : ''}
       </div>
       
       ${activeDirection && !isCancelled ? `
