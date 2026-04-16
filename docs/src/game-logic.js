@@ -158,14 +158,17 @@ function getFoldPreview(board, direction, depth) {
   return { valid: true, ghosts, mismatches: [], isEmpty: false };
 }
 
-// Spawn new number
+// Spawn new number - random from existing values on board
 function spawnNewNumber(board) {
   const emptyCells = [];
+  const existingValues = new Set();
   
   for (let row = 0; row < BOARD_SIZE; row++) {
     for (let col = 0; col < BOARD_SIZE; col++) {
       if (board[row][col] === 0) {
         emptyCells.push({ row, col });
+      } else {
+        existingValues.add(board[row][col]);
       }
     }
   }
@@ -174,7 +177,14 @@ function spawnNewNumber(board) {
 
   const randomCell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
   const newBoard = board.map(row => [...row]);
-  newBoard[randomCell.row][randomCell.col] = 2;
+  
+  // Pick random value from existing values, or default to 2 if none
+  const values = Array.from(existingValues);
+  const newValue = values.length > 0 
+    ? values[Math.floor(Math.random() * values.length)] 
+    : 2;
+  
+  newBoard[randomCell.row][randomCell.col] = newValue;
 
   return newBoard;
 }

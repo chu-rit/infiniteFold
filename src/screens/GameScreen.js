@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { StyleSheet, View, Text, Dimensions, SafeAreaView, StatusBar, Platform } from 'react-native';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { StyleSheet, View, Text, Dimensions, SafeAreaView, StatusBar, Platform, Animated } from 'react-native';
 import { GameBoard } from '../components/GameBoard';
 import { initializeBoard, checkGameOver, spawnNewNumber, executeFold } from '../utils/gameLogic';
 
@@ -13,6 +13,9 @@ export default function GameScreen() {
   const [isGameOver, setIsGameOver] = useState(false);
   const [gameOverDismissed, setGameOverDismissed] = useState(false);
   const [comboCount, setComboCount] = useState(0);
+  const [showCombo, setShowCombo] = useState(false);
+  const comboAnim = useRef(new Animated.Value(0)).current;
+  const comboTimerRef = useRef(null);
 
   const resetGame = useCallback(() => {
     setBoard(initializeBoard());
@@ -25,6 +28,30 @@ export default function GameScreen() {
   const dismissGameOver = useCallback(() => {
     setGameOverDismissed(true);
   }, []);
+
+  const triggerComboEffect = useCallback((count) => {
+    // 이전 애니메이션 중단
+    comboAnim.stopAnimation();
+    
+    setShowCombo(true);
+    comboAnim.setValue(0);
+    
+    Animated.sequence([
+      Animated.spring(comboAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 5,
+        tension: 100,
+      }),
+      Animated.timing(comboAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowCombo(false);
+    });
+  }, [comboAnim]);
 
   // 웹 환경에서 컨텍스트 메뉴 비활성화
   useEffect(() => {
@@ -56,9 +83,11 @@ export default function GameScreen() {
     if (result.mergeCount > 0) {
       newCombo += 1;
       setComboCount(newCombo);
+      triggerComboEffect(newCombo);
     } else {
       newCombo = 0;
       setComboCount(0);
+      setShowCombo(false);
     }
     newBoard = spawnNewNumber(newBoard);
 
@@ -81,32 +110,45 @@ export default function GameScreen() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#faf8ef" />
       
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.titleBlock}>
-          <Text style={styles.title}>INFINITE</Text>
-          <Text style={styles.titleAccent}>FOLD</Text>
-        </View>
-        
-        <View style={styles.scoreBlock}>
-          <View style={styles.scoreBox}>
-            <Text style={styles.scoreLabel}>SCORE</Text>
-            <Text style={styles.scoreValue}>{score}</Text>
-          </View>
-          <View style={styles.scoreBox}>
-            <Text style={styles.scoreLabel}>BEST</Text>
-            <Text style={styles.scoreValue}>{bestScore}</Text>
-          </View>
-        </View>
-      </View>
+      {/* Combo Effect - Tetris Style */}
+      {showCombo && comboCount > 0 && (
+        <Animated.View 
+          style={[
+            styles.comboEffect,
+            {
+              opacity: comboAnim,
+              transform: [
+                { scale: comboAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1.2] }) },
+                { translateY: comboAnim.interpolate({ inputRange: [0, 1], outputRange: [50, 0] }) },
+              ],
+            },
+          ]}
+        >
+          <Text style={styles.comboEffectText}>COMBO</Text>
+          <Text style={styles.comboEffectNumber}>×{comboCount}</Text>
+        </Animated.View>
+      )}
 
-      {/* Combo Indicator - absolute positioned to prevent layout shift */}
-      <View style={[styles.comboBar, comboCount === 0 && styles.comboBarHidden]}>
-        <Text style={styles.comboText}>🔥 COMBO ×{comboCount > 0 ? comboCount : 1}</Text>
-      </View>
-
-      {/* Game Board */}
+      {/* Game Board Container with Header */}
       <View style={styles.boardContainer}>
+        <View style={styles.headerRow}>
+          <View style={styles.titleBlock}>
+            <Text style={styles.title}>INFINITE</Text>
+            <Text style={styles.titleAccent}>FOLD</Text>
+          </View>
+          
+          <View style={styles.scoreBlock}>
+            <View style={styles.scoreBox}>
+              <Text style={styles.scoreLabel}>SCORE</Text>
+              <Text style={styles.scoreValue}>{score}</Text>
+            </View>
+            <View style={styles.scoreBox}>
+              <Text style={styles.scoreLabel}>BEST</Text>
+              <Text style={styles.scoreValue}>{bestScore}</Text>
+            </View>
+          </View>
+        </View>
+
         <GameBoard 
           board={board}
           size={BOARD_SIZE}
@@ -138,15 +180,6 @@ export default function GameScreen() {
         </View>
       )}
 
-      {/* Instructions */}
-      <View style={styles.instructions}>
-        <Text style={styles.instructionText}>
-          Swipe to fold • Short: 1-Row • Long: 2-Row
-        </Text>
-        <Text style={styles.tipText}>
-          Always spawns new number after each fold
-        </Text>
-      </View>
     </SafeAreaView>
   );
 }
@@ -156,14 +189,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#faf8ef',
     overflow: 'hidden',
-  },
-  header: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
   },
   titleBlock: {
     flexDirection: 'column',
@@ -205,26 +230,33 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
   },
-  comboBar: {
-    backgroundColor: '#f67c5f',
-    marginHorizontal: 16,
-    marginBottom: 8,
-    paddingVertical: 6,
-    borderRadius: 20,
-    alignItems: 'center',
+  comboEffect: {
     position: 'absolute',
-    top: 120, // Fixed position below score header
-    left: 16,
-    right: 16,
-    zIndex: 10,
+    top: '40%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 50,
+    pointerEvents: 'none',
   },
-  comboBarHidden: {
-    opacity: 0,
+  comboEffectText: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#f67c5f',
+    textShadowColor: 'rgba(246, 124, 95, 0.5)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+    letterSpacing: 4,
   },
-  comboText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 14,
+  comboEffectNumber: {
+    fontSize: 48,
+    fontWeight: '900',
+    color: '#f65e3b',
+    textShadowColor: 'rgba(246, 94, 59, 0.5)',
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 8,
+    marginTop: -5,
   },
   boardContainer: {
     flex: 1,
@@ -232,6 +264,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     overflow: 'hidden',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    width: '100%',
+    paddingBottom: 12,
   },
   overlay: {
     position: 'absolute',
@@ -301,22 +340,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 18,
-  },
-  instructions: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-    paddingTop: 12,
-    alignItems: 'center',
-  },
-  instructionText: {
-    fontSize: 13,
-    color: '#776e65',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  tipText: {
-    fontSize: 12,
-    color: '#f65e3b',
-    textAlign: 'center',
   },
 });

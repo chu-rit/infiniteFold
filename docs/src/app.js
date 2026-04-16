@@ -23,6 +23,8 @@ let bestScore = localStorage.getItem('infiniteFoldBestScore') || 0;
 let isGameOver = false;
 let gameOverDismissed = false;
 let comboCount = 0;
+let showComboEffect = false;
+let comboEffectTimeout = null;
 
 // Preview State
 let activeDirection = null;
@@ -72,6 +74,11 @@ function resetGame() {
   isGameOver = false;
   gameOverDismissed = false;
   comboCount = 0;
+  showComboEffect = false;
+  if (comboEffectTimeout) {
+    clearTimeout(comboEffectTimeout);
+    comboEffectTimeout = null;
+  }
   activeDirection = null;
   activeDepth = null;
   preview = { valid: true, ghosts: [], mismatches: [] };
@@ -81,6 +88,20 @@ function resetGame() {
 function dismissGameOver() {
   gameOverDismissed = true;
   render();
+}
+
+function triggerComboEffect() {
+  if (comboEffectTimeout) {
+    clearTimeout(comboEffectTimeout);
+  }
+  
+  showComboEffect = true;
+  render();
+  
+  comboEffectTimeout = setTimeout(() => {
+    showComboEffect = false;
+    render();
+  }, 300);
 }
 
 function handleFold(direction, depth) {
@@ -99,6 +120,7 @@ function handleFold(direction, depth) {
 
   if (result.mergeCount > 0) {
     comboCount += 1;
+    triggerComboEffect();
   } else {
     comboCount = 0;
   }
@@ -415,26 +437,12 @@ function getTileColorClass(value) {
 function render() {
   root.innerHTML = `
     <div class="container">
-      <div class="header">
-        <div class="title-block">
-          <div class="title">INFINITE</div>
-          <div class="title-accent">FOLD</div>
+      ${showComboEffect && comboCount > 0 ? `
+        <div class="combo-effect">
+          <div class="combo-effect-text">COMBO</div>
+          <div class="combo-effect-number">×${comboCount}</div>
         </div>
-        <div class="score-block">
-          <div class="score-box">
-            <div class="score-label">SCORE</div>
-            <div class="score-value">${score}</div>
-          </div>
-          <div class="score-box">
-            <div class="score-label">BEST</div>
-            <div class="score-value">${bestScore}</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="combo-bar ${comboCount === 0 ? 'hidden' : ''}">
-        <div class="combo-text">🔥 COMBO ×${comboCount > 0 ? comboCount : 1}</div>
-      </div>
+      ` : ''}
 
       <div class="board-container"></div>
 
@@ -457,10 +465,6 @@ function render() {
         </div>
       ` : ''}
 
-      <div class="instructions">
-        <div class="instruction-text">Swipe to fold • Short: 1-Row • Long: 2-Row</div>
-        <div class="tip-text">Always spawns new number after each fold</div>
-      </div>
     </div>
   `;
   
@@ -503,6 +507,23 @@ function renderBoard() {
   const affectedCells = getAffectedCells();
   
   container.innerHTML = `
+    <div class="header-row">
+      <div class="title-block">
+        <div class="title">INFINITE</div>
+        <div class="title-accent">FOLD</div>
+      </div>
+      <div class="score-block">
+        <div class="score-box">
+          <div class="score-label">SCORE</div>
+          <div class="score-value">${score}</div>
+        </div>
+        <div class="score-box">
+          <div class="score-label">BEST</div>
+          <div class="score-value">${bestScore}</div>
+        </div>
+      </div>
+    </div>
+
     <div class="game-board" style="width: ${boardSize}px; height: ${boardSize}px;">
       <div class="board-content">
         ${Array(4).fill(null).map((_, row) =>
