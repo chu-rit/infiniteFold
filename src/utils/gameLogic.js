@@ -202,17 +202,23 @@ export function spawnNewNumber(board) {
   return newBoard;
 }
 
-// Check game over
-export function checkGameOver(board) {
+// Get possible moves count
+export function getPossibleMovesCount(board) {
   const directions = Object.values(DIRECTIONS);
   const depths = [1, 2];
+  let count = 0;
 
   for (const direction of directions) {
     for (const depth of depths) {
       const { possible } = canFold(board, direction, depth);
-      if (possible) return false;
+      if (possible) count++;
     }
   }
 
-  return true;
+  return count;
+}
+
+// Check game over (helper function)
+export function checkGameOver(board) {
+  return getPossibleMovesCount(board) === 0;
 }

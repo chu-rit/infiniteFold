@@ -6,7 +6,8 @@ import {
   executeFold, 
   getFoldPreview, 
   spawnNewNumber, 
-  checkGameOver 
+  checkGameOver,
+  getPossibleMovesCount
 } from './game-logic.js';
 
 // Constants
@@ -25,6 +26,7 @@ let gameOverDismissed = false;
 let comboCount = 0;
 let showComboEffect = false;
 let comboEffectTimeout = null;
+let possibleMoves = getPossibleMovesCount(board);
 
 // Preview State
 let activeDirection = null;
@@ -75,6 +77,7 @@ function resetGame() {
   gameOverDismissed = false;
   comboCount = 0;
   showComboEffect = false;
+  possibleMoves = getPossibleMovesCount(board);
   if (comboEffectTimeout) {
     clearTimeout(comboEffectTimeout);
     comboEffectTimeout = null;
@@ -133,6 +136,7 @@ function handleFold(direction, depth) {
   }
 
   board = newBoard;
+  possibleMoves = getPossibleMovesCount(newBoard);
 
   if (checkGameOver(newBoard)) {
     isGameOver = true;
@@ -520,6 +524,10 @@ function renderBoard() {
         <div class="score-box">
           <div class="score-label">BEST</div>
           <div class="score-value">${bestScore}</div>
+        </div>
+        <div class="score-box moves-box">
+          <div class="score-label">Possible<br>Moves</div>
+          <div class="score-value">${possibleMoves}</div>
         </div>
       </div>
     </div>

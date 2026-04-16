@@ -189,19 +189,25 @@ function spawnNewNumber(board) {
   return newBoard;
 }
 
-// Check game over
-function checkGameOver(board) {
+// Get possible moves count
+function getPossibleMovesCount(board) {
   const directions = Object.values(DIRECTIONS);
   const depths = [1, 2];
+  let count = 0;
 
   for (const direction of directions) {
     for (const depth of depths) {
       const { possible } = canFold(board, direction, depth);
-      if (possible) return false;
+      if (possible) count++;
     }
   }
 
-  return true;
+  return count;
+}
+
+// Check game over (helper function)
+function checkGameOver(board) {
+  return getPossibleMovesCount(board) === 0;
 }
 
 // Initialize board with center 2x2 filled
@@ -215,4 +221,4 @@ function initializeBoard() {
   return board;
 }
 
-export { BOARD_SIZE, DIRECTIONS, initializeBoard, canFold, executeFold, getFoldPreview, spawnNewNumber, checkGameOver };
+export { BOARD_SIZE, DIRECTIONS, initializeBoard, canFold, executeFold, getFoldPreview, spawnNewNumber, checkGameOver, getPossibleMovesCount };

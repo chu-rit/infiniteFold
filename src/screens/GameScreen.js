@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, Dimensions, SafeAreaView, StatusBar, Platform, Animated } from 'react-native';
 import { GameBoard } from '../components/GameBoard';
-import { initializeBoard, checkGameOver, spawnNewNumber, executeFold } from '../utils/gameLogic';
+import { initializeBoard, checkGameOver, spawnNewNumber, executeFold, getPossibleMovesCount } from '../utils/gameLogic';
 
 const { width, height } = Dimensions.get('window');
 const BOARD_SIZE = Math.min(width * 0.92, 380);
@@ -14,15 +14,19 @@ export default function GameScreen() {
   const [gameOverDismissed, setGameOverDismissed] = useState(false);
   const [comboCount, setComboCount] = useState(0);
   const [showCombo, setShowCombo] = useState(false);
+  const [possibleMoves, setPossibleMoves] = useState(getPossibleMovesCount(initializeBoard()));
   const comboAnim = useRef(new Animated.Value(0)).current;
   const comboTimerRef = useRef(null);
 
   const resetGame = useCallback(() => {
-    setBoard(initializeBoard());
+    const newBoard = initializeBoard();
+    setBoard(newBoard);
     setScore(0);
     setIsGameOver(false);
     setGameOverDismissed(false);
     setComboCount(0);
+    setShowCombo(false);
+    setPossibleMoves(getPossibleMovesCount(newBoard));
   }, []);
 
   const dismissGameOver = useCallback(() => {
@@ -98,6 +102,7 @@ export default function GameScreen() {
     }
 
     setBoard(newBoard);
+    setPossibleMoves(getPossibleMovesCount(newBoard));
 
     if (checkGameOver(newBoard)) {
       setIsGameOver(true);
@@ -145,6 +150,10 @@ export default function GameScreen() {
             <View style={styles.scoreBox}>
               <Text style={styles.scoreLabel}>BEST</Text>
               <Text style={styles.scoreValue}>{bestScore}</Text>
+            </View>
+            <View style={[styles.scoreBox, styles.movesBox]}>
+              <Text style={styles.scoreLabel}>Possible{'\n'}Moves</Text>
+              <Text style={styles.scoreValue}>{possibleMoves}</Text>
             </View>
           </View>
         </View>
@@ -230,6 +239,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
   },
+  movesBox: {
+    backgroundColor: '#8f7a66',
+  },
   comboEffect: {
     position: 'absolute',
     top: '40%',
@@ -271,6 +283,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     width: '100%',
     paddingBottom: 12,
+    marginTop: -40,
   },
   overlay: {
     position: 'absolute',
@@ -328,10 +341,14 @@ const styles = StyleSheet.create({
   retryBar: {
     backgroundColor: '#f65e3b',
     marginHorizontal: 16,
-    marginBottom: 16,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
+    position: 'absolute',
+    bottom: 100,
+    left: 16,
+    right: 16,
+    zIndex: 50,
   },
   retryButton: {
     alignItems: 'center',

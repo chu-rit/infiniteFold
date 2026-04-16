@@ -85,6 +85,18 @@ export function GameBoard({ board, size, onFold, isGameOver }) {
         setSelectedTile(null);
       }
       
+      // Check if touch is outside board bounds
+      const currentX = startPositionRef.current.x + event.translationX;
+      const currentY = startPositionRef.current.y + event.translationY;
+      
+      if (currentX < -20 || currentX > size + 20 || currentY < -20 || currentY > size + 20) {
+        setIsCancelled(true);
+        setActiveDirection(null);
+        setActiveDepth(null);
+        setPreview({ valid: true, ghosts: [], mismatches: [] });
+        return;
+      }
+      
       const direction = getDirectionFromOffset(event.translationX, event.translationY);
       const depth = getDepthFromOffset(
         event.translationX, 
