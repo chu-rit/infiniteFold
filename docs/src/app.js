@@ -245,6 +245,9 @@ function handleMouseMove(e) {
 }
 
 function handleDragMove(x, y) {
+  // 이미 취소된 상태면 무시
+  if (isCancelled) return;
+  
   // 보드 밖으로 나갔는지 체크
   if (boardElement) {
     const rect = boardElement.getBoundingClientRect();
