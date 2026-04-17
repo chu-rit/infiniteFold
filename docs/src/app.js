@@ -245,6 +245,19 @@ function handleMouseMove(e) {
 }
 
 function handleDragMove(x, y) {
+  // 보드 밖으로 나갔는지 체크
+  if (boardElement) {
+    const rect = boardElement.getBoundingClientRect();
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      isCancelled = true;
+      activeDirection = null;
+      activeDepth = null;
+      preview = { valid: true, ghosts: [], mismatches: [] };
+      renderBoard();
+      return;
+    }
+  }
+  
   currentTranslateX = x - dragStartX;
   currentTranslateY = y - dragStartY;
   
