@@ -82,18 +82,24 @@ export default function GameScreen() {
     }
 
     let newBoard = result.board;
-    let newCombo = comboCount;
+    const prevComboCount = comboCount;
 
     if (result.mergeCount > 0) {
-      newCombo += 1;
+      const newCombo = comboCount + 1;
       setComboCount(newCombo);
-      triggerComboEffect(newCombo);
+      // 2번 연속부터 콤보 효과 (1콤보로 표시)
+      if (newCombo >= 2) {
+        triggerComboEffect(newCombo);
+      }
     } else {
-      newCombo = 0;
       setComboCount(0);
       setShowCombo(false);
     }
-    newBoard = spawnNewNumber(newBoard);
+    
+    // 이전 턴에 콤보가 없었거나(0), 이번 턴에 머지가 없었으면 새 블럭 생성
+    if (prevComboCount < 1 || result.mergeCount === 0) {
+      newBoard = spawnNewNumber(newBoard);
+    }
 
     const newScore = score + result.points;
     setScore(newScore);
@@ -116,7 +122,7 @@ export default function GameScreen() {
       <StatusBar barStyle="dark-content" backgroundColor="#faf8ef" />
       
       {/* Combo Effect - Tetris Style */}
-      {showCombo && comboCount > 0 && (
+      {showCombo && comboCount >= 2 && (
         <Animated.View 
           style={[
             styles.comboEffect,
@@ -130,7 +136,7 @@ export default function GameScreen() {
           ]}
         >
           <Text style={styles.comboEffectText}>COMBO</Text>
-          <Text style={styles.comboEffectNumber}>×{comboCount}</Text>
+          <Text style={styles.comboEffectNumber}>×{comboCount - 1}</Text>
         </Animated.View>
       )}
 

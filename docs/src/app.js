@@ -120,14 +120,23 @@ function handleFold(direction, depth) {
   }
 
   let newBoard = result.board;
+  const prevComboCount = comboCount;
 
   if (result.mergeCount > 0) {
     comboCount += 1;
-    triggerComboEffect();
+    // 2번 연속부터 콤보 효과 (1콤보로 표시)
+    if (comboCount >= 2) {
+      triggerComboEffect();
+    }
   } else {
     comboCount = 0;
+    showComboEffect = false;
   }
-  newBoard = spawnNewNumber(newBoard);
+  
+  // 이전 턴에 콤보가 없었거나(0), 이번 턴에 머지가 없었으면 새 블럭 생성
+  if (prevComboCount < 1 || result.mergeCount === 0) {
+    newBoard = spawnNewNumber(newBoard);
+  }
 
   score += result.points;
   if (score > bestScore) {
@@ -457,10 +466,10 @@ function getTileColorClass(value) {
 function render() {
   root.innerHTML = `
     <div class="container">
-      ${showComboEffect && comboCount > 0 ? `
+      ${showComboEffect && comboCount >= 2 ? `
         <div class="combo-effect">
           <div class="combo-effect-text">COMBO</div>
-          <div class="combo-effect-number">×${comboCount}</div>
+          <div class="combo-effect-number">×${comboCount - 1}</div>
         </div>
       ` : ''}
 
