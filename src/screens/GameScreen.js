@@ -204,6 +204,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#faf8ef',
     overflow: 'hidden',
+    maxWidth: 430,
+    alignSelf: 'center',
+    width: '100%',
   },
   titleBlock: {
     flexDirection: 'column',
